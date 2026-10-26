@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-- [ ] Código portado cita arquivo e commit de origem no `fleet-ui`; nenhum merge entre repositórios
+- [ ] Código portado cita arquivo e commit de origem no `fleet-ui`; nenhum merge entre repositórios; aviso de licença do `fleet-ui` (MIT) preservado
 - [ ] Status de um robô usa a pose de `poses[robot_id]`, com fallback para `pose`, como na referência
 - [ ] Aguardar chegada faz polling do status até `nav_state` sair de `navigating` e devolve estado e pose finais; intervalo e timeout configuráveis; timeout vira erro do Executor
 - [ ] Respostas HTTP ≥ 400 viram erro do Executor com a mensagem do backend (ex.: a recusa 403 de papel)

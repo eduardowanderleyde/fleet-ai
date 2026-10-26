@@ -9,6 +9,6 @@
 - [ ] `go_to_point` para robô FUUT ou SU → HTTP 403 com `{"success": false, "message": "<robot_id>: papel '<role>' não permite movimento"}`; a pose não muda
 - [ ] `go_to_point` para robô inexistente → HTTP 403 com `"<robot_id>: robot_id não declarado em roles.yaml"`, como no Fleet UI de referência
 - [ ] Destino ocupado, fora do mapa ou sem caminho → HTTP 200 com `success: false` e mensagem distinta para cada caso; robô em `failed` com `last_error` preenchido
-- [ ] Um `go_to_point` válido depois de `failed` volta a funcionar normalmente
+- [ ] Um `go_to_point` válido depois de `failed` volta a funcionar
 - [ ] `cancel` durante a navegação → `success: true`, robô em `idle` na pose em que estava; poses seguintes não mudam
-- [ ] `cancel` com o robô parado → `success: true` sem efeito colateral
+- [ ] `cancel` com o robô parado → `success: true`, sem efeito colateral

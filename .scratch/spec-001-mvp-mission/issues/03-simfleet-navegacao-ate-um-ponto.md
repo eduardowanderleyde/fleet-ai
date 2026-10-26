@@ -7,9 +7,9 @@
 **Status:** ready-for-agent
 
 - [ ] Destino livre e alcançável → `{"success": true, ...}` e o robô passa a `navigating`
-- [ ] Lendo o status repetidamente com o relógio manual, o robô chega e volta a `idle` com pose final dentro de 5 cm do destino e yaw igual ao pedido
+- [ ] Lendo o status repetidamente com o relógio manual, o robô chega e volta a `idle` com pose final a até 5 cm do destino e yaw igual ao pedido
 - [ ] O caminho percorrido nunca passa por célula ocupada ou inflada (verificado amostrando as poses observadas)
 - [ ] Mover um robô não altera a pose dos outros
-- [ ] Mesmo cenário e mesma sequência de comandos produzem a mesma sequência de poses (determinismo)
+- [ ] Mesmo cenário e mesma sequência de comandos produzem a mesma sequência de poses
 - [ ] Um novo `go_to_point` durante a navegação substitui o destino anterior
 - [ ] Velocidade linear e fator de escala do relógio vêm da configuração

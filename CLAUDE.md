@@ -1,9 +1,10 @@
 # Fleet AI
 
-Camada de orquestração por agentes de IA para frotas de robôs móveis. Um agente
-(Claude, com tool use) recebe uma missão em linguagem natural e a executa
-chamando ferramentas HTTP de alto nível de um **backend de frota**, nunca ROS 2
-diretamente.
+Orquestração de frotas de robôs móveis a partir de missões em linguagem natural.
+Um **planejador** transforma a missão em chamadas de ferramentas HTTP de alto
+nível a um **backend de frota**, nunca em comandos ROS 2 diretos. O planejador
+padrão é determinístico; o planejador LLM existe, mas fica desligado por padrão
+(ADR-0004).
 
 Derivado da camada de agentes do Fleet UI (`eduardowanderleyde/fleet-ui`), mas
 independente dele: os dois só conversam pelo **contrato de frota** HTTP. Ver
@@ -16,9 +17,11 @@ independente dele: os dois só conversam pelo **contrato de frota** HTTP. Ver
   registrada no commit (ver ADR-0001).
 - Spec-Driven Development: todo trabalho parte de uma spec e de tickets em
   `.scratch/`. Implementação com TDD nas seams definidas na spec.
-- A suíte padrão de testes nunca chama a API paga da Anthropic: usa o LLM
-  roteirizado. Testes com a API real são opt-in e ficam fora da suíte padrão.
-- Segredos (como `ANTHROPIC_API_KEY`) só por variável de ambiente; nunca no
+- O produto não usa APIs pagas de LLM. Não adicionar SDK de LLM pago como
+  dependência, nem variáveis de chave de API, sem uma spec aprovada para isso
+  (ADR-0004). O planejador LLM só é testado com o LLM roteirizado.
+- O Claude Code é ferramenta de desenvolvimento, não parte do produto.
+- Segredos, quando existirem, só por variável de ambiente; nunca no
   repositório.
 - Documentação em português; código, identificadores e mensagens de API em
   inglês.
