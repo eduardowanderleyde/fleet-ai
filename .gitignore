@@ -1,0 +1,75 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+.eggs/
+build/
+dist/
+pip-wheel-metadata/
+
+# Ambientes virtuais
+.venv/
+venv/
+env/
+.python-version
+
+# Testes, lint e tipos
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.mypy_cache/
+.ruff_cache/
+.pyright/
+.hypothesis/
+.tox/
+.nox/
+
+# Segredos e configuração local (o exemplo sem segredos é versionado)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+id_rsa*
+id_ed25519*
+credentials*.json
+secrets*.json
+secrets/
+.netrc
+
+# Dados e estado de execução
+*.sqlite
+*.sqlite3
+*.db
+data/
+runs/
+agent_runs/
+*.mcap
+*.db3
+*.bag
+
+# Logs
+*.log
+logs/
+
+# Docker
+docker-compose.override.yml
+compose.override.yml
+
+# Editores e SO
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Configuração local do Claude Code
+.claude/settings.local.json
