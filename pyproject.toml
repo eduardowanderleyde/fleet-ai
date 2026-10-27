@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "fastapi>=0.115",
+    "httpx2>=2.16",
     "numpy>=2.1",
     "pillow>=11",
     "uvicorn>=0.32",
@@ -13,7 +14,6 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "httpx2>=2.16.0",
     "mypy>=1.13",
     "pytest>=8.3",
     "ruff>=0.8",

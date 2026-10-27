@@ -4,18 +4,18 @@
 
 **Blocked by:** 04
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Código portado cita arquivo e commit de origem no `fleet-ui`; nenhum merge entre repositórios; aviso de licença MIT do `fleet-ui` preservado
-- [ ] Status de um robô usa a pose de `poses[robot_id]`, com fallback para `pose`, como na referência
-- [ ] Comando recusado vira erro do Executor carregando `error_code` e `message`
-- [ ] Aguardar o fim da navegação faz polling até o estado sair de `navigating` e devolve estado final, `last_error` e pose; intervalo e timeout configuráveis; timeout vira erro do Executor
-- [ ] O Executor lembra, por robô, o destino ativo que ele mesmo enviou e se já o viu em `navigating`
-- [ ] Cancelar com verificação: `cancel` aceito seguido de polling até o estado sair de `navigating`, com resultado `confirmed` (destino ativo enviado por este Executor, visto em `navigating`, cancel aceito e primeira leitura seguinte `idle`), `ambiguous` (cancel aceito e robô em `failed`, por exemplo `NAV2_ABORTED`, ou destino ativo desconhecido para este Executor) ou `not_confirmed` (continua `navigating` até o timeout)
-- [ ] `NAV2_ABORTED` nunca produz `confirmed` por si só
-- [ ] Adaptador `fleet_ui` traduz: HTTP 200 com `success=False` e `error_code='X'` no texto do `ros2 service call` → `error_code: X`; 403 "não declarado em roles.yaml" → `UNKNOWN_ROBOT`; 403 "não permite movimento" → `ROLE_NOT_ALLOWED`; 422 do FastAPI → `INVALID_REQUEST`; texto sem `success=False` → sucesso
-- [ ] O fake do Fleet UI emite as respostas **brutas** da referência (HTTP 200 com texto de terminal, 403 do backend, 422 do FastAPI, navegação assíncrona) e pode ser configurado para, depois de um cancelamento aceito, mostrar `idle` ou `failed` / `NAV2_ABORTED` na leitura seguinte, como o orquestrador real; documenta de quais arquivos e commit vieram
-- [ ] A mesma suíte de contrato passa com os dois adaptadores: listar, status, mover até chegar, robô desconhecido, papel sem movimento, já navegando, destino impossível (`NAV2_REJECTED`), cancelar navegando e cancelar parado (`CANCEL_FAILED`)
+- [x] Código portado cita arquivo e commit de origem no `fleet-ui`; nenhum merge entre repositórios; aviso de licença MIT do `fleet-ui` preservado
+- [x] Status de um robô usa a pose de `poses[robot_id]`, com fallback para `pose`, como na referência
+- [x] Comando recusado vira erro do Executor carregando `error_code` e `message`
+- [x] Aguardar o fim da navegação faz polling até o estado sair de `navigating` e devolve estado final, `last_error` e pose; intervalo e timeout configuráveis; timeout vira erro do Executor
+- [x] O Executor lembra, por robô, o destino ativo que ele mesmo enviou e se já o viu em `navigating`
+- [x] Cancelar com verificação: `cancel` aceito seguido de polling até o estado sair de `navigating`, com resultado `confirmed` (destino ativo enviado por este Executor, visto em `navigating`, cancel aceito e primeira leitura seguinte `idle`), `ambiguous` (cancel aceito e robô em `failed`, por exemplo `NAV2_ABORTED`, ou destino ativo desconhecido para este Executor) ou `not_confirmed` (continua `navigating` até o timeout)
+- [x] `NAV2_ABORTED` nunca produz `confirmed` por si só
+- [x] Adaptador `fleet_ui` traduz: HTTP 200 com `success=False` e `error_code='X'` no texto do `ros2 service call` → `error_code: X`; 403 "não declarado em roles.yaml" → `UNKNOWN_ROBOT`; 403 "não permite movimento" → `ROLE_NOT_ALLOWED`; 422 do FastAPI → `INVALID_REQUEST`; texto sem `success=False` → sucesso
+- [x] O fake do Fleet UI emite as respostas **brutas** da referência (HTTP 200 com texto de terminal, 403 do backend, 422 do FastAPI, navegação assíncrona) e pode ser configurado para, depois de um cancelamento aceito, mostrar `idle` ou `failed` / `NAV2_ABORTED` na leitura seguinte, como o orquestrador real; documenta de quais arquivos e commit vieram
+- [x] A mesma suíte de contrato passa com os dois adaptadores: listar, status, mover até chegar, robô desconhecido, papel sem movimento, já navegando, destino impossível (`NAV2_REJECTED`), cancelar navegando e cancelar parado (`CANCEL_FAILED`)
 
 ## Testes previstos
 

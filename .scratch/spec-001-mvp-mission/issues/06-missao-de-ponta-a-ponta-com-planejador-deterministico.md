@@ -15,3 +15,7 @@
 - [ ] Mover um robô que já está navegando: o plano para no `move_robot` com `ALREADY_NAVIGATING`; o texto final sugere cancelar antes; o planejador não cancela sozinho
 - [ ] Coordenada impossível (dentro de uma estante): `move_robot` aceito, `wait_for_arrival` devolve `failed` / `NAV2_REJECTED`, missão `completed` com texto final explicando que o destino não pôde ser alcançado
 - [ ] Instrução sem intenção reconhecida → `not_understood`, nenhum passo, 3 exemplos no texto final
+
+## Comments
+
+- 2026-10-26 (ticket 05): o Executor ignora `valid` e `stale` das poses do Fleet UI (o SimFleet sempre manda `valid: true`). Se o planejador usar a pose para decidir ou relatar, considerar uma pose inválida ou velha como desconhecida em vez de confiar nela.
