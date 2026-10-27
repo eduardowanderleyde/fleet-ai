@@ -28,6 +28,13 @@ MissionStatus = Literal[
 ]
 
 
+# Status em que a missão já terminou e pode sair da memória (ticket 14). Escrito por
+# extenso: um status novo não vira "descartável" sem decisão explícita.
+TERMINAL_STATUSES: frozenset[MissionStatus] = frozenset(
+    {"completed", "not_understood", "incomplete", "failed", "rejected"}
+)
+
+
 @dataclass
 class Mission:
     instruction: str

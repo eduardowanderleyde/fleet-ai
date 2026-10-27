@@ -4,18 +4,18 @@
 
 **Blocked by:** 09
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Consultar o limitador para um IP sem missão aceita não cria registro para ele
-- [ ] Registros com mais de 24 h somem nas próprias chamadas do limitador; um IP sem missão nas últimas 24 h deixa de ser guardado
-- [ ] A varredura completa dos IPs roda no máximo uma vez por minuto do relógio injetado
-- [ ] A limpeza preserva os limites: um IP com missões dentro da janela de 1 minuto ou de 24 h continua limitado depois de uma varredura
-- [ ] Acima do teto de retenção, sai a missão terminal mais antiga; missões `running` nunca são descartadas e continuam respondendo `GET` com 200
-- [ ] Retenção cheia sem missão terminal elegível → `503`, `{"error": "capacity_exhausted", "message"}`, com `Retry-After` (estimativa)
-- [ ] Uma criação recusada por capacidade não consome cota, não devolve `mission_id`, não cria missão e não inicia o planejador
-- [ ] Com várias criações simultâneas, o número de missões aceitas nunca passa da capacidade, e cada recusada cumpre o critério anterior
-- [ ] Nenhuma pausa assíncrona entre a primeira checagem de admissão e a inserção da missão (regra escrita no código, coberta pelo teste de criações simultâneas)
-- [ ] Sem propriedade pública nova de produção só para os testes: os testes do limitador observam o estado interno
+- [x] Consultar o limitador para um IP sem missão aceita não cria registro para ele
+- [x] Registros com mais de 24 h somem nas próprias chamadas do limitador; um IP sem missão nas últimas 24 h deixa de ser guardado
+- [x] A varredura completa dos IPs roda no máximo uma vez por minuto do relógio injetado
+- [x] A limpeza preserva os limites: um IP com missões dentro da janela de 1 minuto ou de 24 h continua limitado depois de uma varredura
+- [x] Acima do teto de retenção, sai a missão terminal mais antiga; missões `running` nunca são descartadas e continuam respondendo `GET` com 200
+- [x] Retenção cheia sem missão terminal elegível → `503`, `{"error": "capacity_exhausted", "message"}`, com `Retry-After` (estimativa)
+- [x] Uma criação recusada por capacidade não consome cota, não devolve `mission_id`, não cria missão e não inicia o planejador
+- [x] Com várias criações simultâneas, o número de missões aceitas nunca passa da capacidade, e cada recusada cumpre o critério anterior
+- [x] Nenhuma pausa assíncrona entre a primeira checagem de admissão e a inserção da missão (regra escrita no código, coberta pelo teste de criações simultâneas)
+- [x] Sem propriedade pública nova de produção só para os testes: os testes do limitador observam o estado interno
 
 ## Testes previstos
 
@@ -41,3 +41,7 @@ Cada garantia com prova de sanidade (desligar a regra e ver o teste falhar).
 - Coordenação de limites entre processos ou réplicas.
 - Política de `ExecutorTimeout` (ADR-0006, proposto).
 - Orçamento de tokens e custos (ADR-0004).
+
+## Comments
+
+- 2026-10-27 (implementação): o `Retry-After` do `503 capacity_exhausted` é uma estimativa fixa de 5 s (`CAPACITY_RETRY_AFTER`), não garantia. Com os padrões (500 guardadas, 4 simultâneas) o 503 é inalcançável, porque o limite de concorrência recusa antes; ele aparece com `missions_retained` menor ou igual a `max_concurrent`. O teste de criações simultâneas cobre a admissão atômica: com um `await` inserido entre a checagem e a inserção, ele falha.

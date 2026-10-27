@@ -5,7 +5,7 @@ Recusam pedidos antes de qualquer planejamento. Estado em memória, para um proc
 
 import math
 import re
-from collections import defaultdict, deque
+from collections import deque
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 
@@ -98,14 +98,25 @@ class RateLimiter:
     def __init__(self, limits: Limits, clock: Callable[[], float]) -> None:
         self._windows = ((MINUTE, limits.missions_per_minute), (DAY, limits.missions_per_day))
         self._clock = clock
-        self._accepted: defaultdict[str, deque[float]] = defaultdict(deque)
+        # Só IPs com missão aceita nas últimas 24 h (ticket 14).
+        self._accepted: dict[str, deque[float]] = {}
+        self._last_sweep = clock()
 
     def retry_after(self, ip: str) -> int | None:
-        """Segundos até o IP poder criar outra missão, ou None se ele já pode."""
+        """Segundos até o IP poder criar outra missão, ou None se ele já pode.
+
+        Consultar não cria registro para o IP.
+        """
         now = self._clock()
-        accepted = self._accepted[ip]
+        self._sweep(now)
+        accepted = self._accepted.get(ip)
+        if accepted is None:
+            return None
         while accepted and accepted[0] <= now - DAY:
             accepted.popleft()
+        if not accepted:
+            del self._accepted[ip]
+            return None
         waits = []
         for window, limit in self._windows:
             recent = [moment for moment in accepted if moment > now - window]
@@ -114,7 +125,18 @@ class RateLimiter:
         return max(1, math.ceil(max(waits))) if waits else None
 
     def record(self, ip: str) -> None:
-        self._accepted[ip].append(self._clock())
+        now = self._clock()
+        self._sweep(now)
+        self._accepted.setdefault(ip, deque()).append(now)
+
+    def _sweep(self, now: float) -> None:
+        """Limpeza oportunista: no máximo uma vez por minuto, esquece os IPs sem
+        missão nas últimas 24 h. Não é um teto de memória (SPEC-001, Guardas)."""
+        if now - self._last_sweep < MINUTE:
+            return
+        self._last_sweep = now
+        for ip in [ip for ip, accepted in self._accepted.items() if accepted[-1] <= now - DAY]:
+            del self._accepted[ip]
 
 
 def client_ip(peer: str, forwarded_for: str | None, trusted_proxies: frozenset[str]) -> str:

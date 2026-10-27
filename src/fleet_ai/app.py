@@ -22,6 +22,7 @@ from fleet_ai.guards import (
 from fleet_ai.missions import (
     DEFAULT_CANCEL_GRACE,
     DEFAULT_MISSION_TIMEOUT,
+    TERMINAL_STATUSES,
     Mission,
     _execute_mission,
 )
@@ -79,6 +80,9 @@ def create_app(
         request: MissionRequest, http: Request, background: BackgroundTasks
     ) -> dict[str, str] | JSONResponse:
         nonlocal running
+        # Admissão atômica (SPEC-001, ticket 14): daqui até a inserção da missão não
+        # há nenhum `await`, então duas requisições nunca se intercalam entre "há vaga"
+        # e "ocupei a vaga". Vale para um processo com um event loop.
         problem = instruction_error(request.instruction, guard_limits) or robot_id_error(
             request.robot_id
         )
@@ -91,12 +95,17 @@ def create_app(
             return _retry_later("rate_limited", "Too many missions from this address.", wait)
         if running >= guard_limits.max_concurrent:
             return _retry_later("too_many_missions", "Too many missions running; try again.", 1)
+        full = len(missions) >= guard_limits.missions_retained
+        if full and not _drop_oldest_terminal(missions):
+            return _retry_later(
+                "capacity_exhausted",
+                "No room for more missions right now; try again later.",
+                CAPACITY_RETRY_AFTER,
+                status_code=503,
+            )
         rate.record(ip)
         mission = Mission(request.instruction, request.robot_id, planner=active_planner.name)
         missions[mission.mission_id] = mission
-        while len(missions) > guard_limits.missions_retained:
-            # A mais antiga sai da memória; se ainda estiver rodando, termina normalmente.
-            missions.pop(next(iter(missions)))
         running += 1
         background.add_task(run_mission, mission)
         return {"mission_id": mission.mission_id, "status": mission.status}
@@ -125,8 +134,23 @@ def _refusal(status_code: int, error: str, message: str) -> JSONResponse:
     return JSONResponse({"error": error, "message": message}, status_code=status_code)
 
 
-def _retry_later(error: str, message: str, retry_after: int) -> JSONResponse:
-    """Recusa 429 com o `Retry-After` em segundos (SPEC-001)."""
-    refusal = _refusal(429, error, message)
+# Estimativa, não garantia, de quando haverá capacidade de retenção (SPEC-001).
+CAPACITY_RETRY_AFTER = 5
+
+
+def _retry_later(
+    error: str, message: str, retry_after: int, *, status_code: int = 429
+) -> JSONResponse:
+    """Recusa com o `Retry-After` em segundos (SPEC-001): 429 por padrão, 503 por capacidade."""
+    refusal = _refusal(status_code, error, message)
     refusal.headers["Retry-After"] = str(retry_after)
     return refusal
+
+
+def _drop_oldest_terminal(missions: dict[str, Mission]) -> bool:
+    """Tira da memória a missão terminal mais antiga; missões `running` nunca saem."""
+    for mission_id, mission in missions.items():
+        if mission.status in TERMINAL_STATUSES:
+            del missions[mission_id]
+            return True
+    return False

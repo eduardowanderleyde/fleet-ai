@@ -274,3 +274,17 @@ def test_invalid_limit_in_the_environment_prevents_startup(
 
     with pytest.raises(ValueError, match=variable):
         create_fleet_ai(executor=Executor(SimAdapter("http://fleet")))
+
+
+async def test_rate_limits_still_hold_after_cleanup() -> None:
+    clock = FakeClock()
+    limits = Limits(missions_per_minute=10, missions_per_day=1)
+    async with mission_stack(planner=CountingPlanner(), limits=limits, clock=clock) as stack:
+        first = await post(stack.api)
+        clock.now += 120  # passa da janela de varredura
+        async with stack.client("203.0.113.9") as other_ip:
+            other = await post(other_ip)  # dispara a limpeza
+        again = await post(stack.api)
+
+    assert (first.status_code, other.status_code) == (202, 202)
+    assert again.status_code == 429  # a limpeza não zerou a cota do dia
