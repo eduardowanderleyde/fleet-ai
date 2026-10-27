@@ -4,6 +4,7 @@ O planejador determinístico reconhece intenções por regras, sem modelo de
 linguagem, monta um plano fixo e o executa pelo despachante.
 """
 
+import math
 import re
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
@@ -23,6 +24,14 @@ class Destination:
     x: float
     y: float
     yaw: float = 0.0
+    coordinate: bool = False
+
+    def describe(self, language: Language) -> str:
+        """Lugar pelo nome; coordenada com o separador decimal do idioma."""
+        if not self.coordinate:
+            return self.label
+        separator = "," if language == "pt" else "."
+        return f"x {_decimal(self.x, separator)} y {_decimal(self.y, separator)}"
 
 
 @dataclass(frozen=True)
@@ -58,13 +67,13 @@ _MOVE_VERBS = {
 _EXAMPLES: dict[Language, tuple[str, ...]] = {
     "pt": (
         "leve o tb1 até a doca de carga",
-        "mande o tb2 para o corredor central",
-        "mova o robô 1 até a base",
+        "onde está o tb2?",
+        "mova o robô 1 para x 1,5 y 2",
     ),
     "en": (
         "move tb1 to the loading dock",
-        "send tb2 to the central aisle",
-        "take robot 1 to the base",
+        "where is tb2?",
+        "send robot 1 to (1.5, 2)",
     ),
 }
 
@@ -83,17 +92,188 @@ class DeterministicPlanner:
             for place in names.places
             for alias in (place.name, *place.synonyms)
         }
+        self._robot_names = ", ".join(robot.robot_id for robot in names.robots)
+        self._place_names = ", ".join(place.name for place in names.places)
 
     async def run(
         self, instruction: str, robot_id: str | None, dispatcher: Dispatcher
     ) -> PlanOutcome:
         text = normalize(instruction)
         language = detect_language(instruction)
+        places = _find_all(text, self._places)
+        coordinate = _coordinate(text)
+        intents = _intents(text)
+        if _SEQUENCE.search(text) or len(intents) > 1 or len(places) + bool(coordinate) > 1:
+            return self._not_understood("multiple_actions", language)
         robot = _find(text, self._robots)
-        destination = _coordinate(text) or _find(text, self._places)
-        if robot is None or destination is None or not (words(text) & _MOVE_VERBS):
-            return PlanOutcome("not_understood", language, _not_understood(language))
-        return await _move_to(robot, destination, language, dispatcher)
+        if robot is None and _ROBOT_LIKE.search(text):
+            return self._not_understood("unknown_robot", language)
+        if intents == {"list"}:
+            return await _list_robots(language, dispatcher)
+        if robot is not None and intents == {"cancel"}:
+            return await _cancel(robot, language, dispatcher)
+        if robot is not None and intents == {"status"}:
+            return await _robot_status(robot, language, dispatcher)
+        if robot is not None and intents == {"move"}:
+            destination = coordinate or (places[0] if places else None)
+            if destination is None:
+                return self._not_understood("unknown_place", language)
+            return await _move_to(robot, destination, language, dispatcher)
+        return PlanOutcome("not_understood", language, _examples_text(language))
+
+    def _not_understood(self, reason: str, language: Language) -> PlanOutcome:
+        names = {"unknown_robot": self._robot_names, "unknown_place": self._place_names}
+        text = _NOT_UNDERSTOOD[reason][language].format(names=names.get(reason, ""))
+        return PlanOutcome("not_understood", language, text)
+
+
+# Conectores de sequência: duas ações na mesma instrução (só uma por missão).
+_SEQUENCE = re.compile(r"\b(?:e depois|depois|em seguida|e entao|then|and then|after that)\b")
+# Algo que parece um robô (tb9, robo 5, robot 7) e não está no cenário.
+_ROBOT_LIKE = re.compile(r"\b(?:tb|robo|robot)\s*\d+\b")
+
+_NOT_UNDERSTOOD: dict[str, dict[Language, str]] = {
+    "multiple_actions": {
+        "pt": "Só consigo executar uma ação por missão. Envie uma instrução de cada vez.",
+        "en": "I can only do one action per mission. Send one instruction at a time.",
+    },
+    "unknown_robot": {
+        "pt": "Não conheço esse robô. Robôs do cenário: {names}.",
+        "en": "I do not know that robot. Robots in the scenario: {names}.",
+    },
+    "unknown_place": {
+        "pt": "Não conheço esse lugar. Lugares do cenário: {names}.",
+        "en": "I do not know that place. Places in the scenario: {names}.",
+    },
+}
+
+
+def _intents(text: str) -> set[str]:
+    """As intenções que a instrução menciona; mais de uma é recusada."""
+    found = words(text)
+    intents = set()
+    if _is_list(text):
+        intents.add("list")
+    if found & _CANCEL_VERBS:
+        intents.add("cancel")
+    if _is_status(text):
+        intents.add("status")
+    if found & _MOVE_VERBS:
+        intents.add("move")
+    return intents
+
+
+_LIST_VERBS = {
+    "liste",
+    "listar",
+    "lista",
+    "quais",
+    "mostre",
+    "mostrar",
+    "list",
+    "which",
+    "what",
+    "show",
+}
+_FLEET_WORDS = {"robos", "robo", "frota", "robots", "fleet"}
+
+
+def _is_list(text: str) -> bool:
+    found = words(text)
+    return bool(found & _LIST_VERBS) and bool(found & _FLEET_WORDS)
+
+
+async def _list_robots(language: Language, dispatcher: Dispatcher) -> PlanOutcome:
+    result, _ = await dispatcher.call("list_robots", {})
+    names = ", ".join(result["robot_ids"])
+    text = f"Robôs na frota: {names}." if language == "pt" else f"Robots in the fleet: {names}."
+    return PlanOutcome("completed", language, text)
+
+
+_CANCEL_VERBS = {
+    "pare",
+    "parar",
+    "cancele",
+    "cancelar",
+    "interrompa",
+    "interromper",
+    "aborte",
+    "stop",
+    "cancel",
+    "abort",
+    "halt",
+}
+
+_CANCEL_TEXTS: dict[str, dict[Language, str]] = {
+    "confirmed": {
+        "pt": "A navegação do {robot} foi cancelada; ele está parado.",
+        "en": "The navigation of {robot} was cancelled; it is stopped.",
+    },
+    "ambiguous": {
+        "pt": "O {robot} parou, mas não é possível afirmar que foi pelo cancelamento.",
+        "en": "{robot} stopped, but it is not possible to say it was the cancellation.",
+    },
+    "not_confirmed": {
+        "pt": "O cancelamento foi aceito, mas o {robot} continua navegando.",
+        "en": "The cancel was accepted, but {robot} is still navigating.",
+    },
+    "CANCEL_FAILED": {
+        "pt": "Não havia navegação ativa do {robot} para cancelar.",
+        "en": "There was no active navigation of {robot} to cancel.",
+    },
+}
+
+
+async def _cancel(robot: str, language: Language, dispatcher: Dispatcher) -> PlanOutcome:
+    """Só o resultado `confirmed` permite dizer que a navegação foi cancelada (ADR-0005)."""
+    result, refused = await dispatcher.call("cancel_navigation", {"robot_id": robot})
+    key = result["error_code"] if refused else result["outcome"]
+    templates = _CANCEL_TEXTS.get(key)
+    if templates is None:
+        return PlanOutcome("completed", language, _refused(robot, key, language))
+    return PlanOutcome("completed", language, templates[language].format(robot=robot))
+
+
+_STATUS_PHRASES = (
+    "onde esta",
+    "estado",
+    "status",
+    "posicao",
+    "como esta",
+    "where is",
+    "position",
+    "how is",
+    "state",
+)
+
+
+def _is_status(text: str) -> bool:
+    return any(re.search(rf"\b{phrase}\b", text) for phrase in _STATUS_PHRASES)
+
+
+_NAV_STATE_TEXT: dict[str, dict[Language, str]] = {
+    "idle": {"pt": "parado", "en": "idle"},
+    "navigating": {"pt": "navegando", "en": "navigating"},
+    "failed": {
+        "pt": "parado depois de uma navegação que falhou",
+        "en": "stopped after a failed navigation",
+    },
+}
+
+
+async def _robot_status(robot: str, language: Language, dispatcher: Dispatcher) -> PlanOutcome:
+    status, refused = await dispatcher.call("get_robot_status", {"robot_id": robot})
+    if refused:
+        return PlanOutcome("completed", language, _refused(robot, status["error_code"], language))
+    state = _NAV_STATE_TEXT[status["nav_state"]][language]
+    x, y = status["pose"]["x"], status["pose"]["y"]
+    if language == "pt":
+        text = f"O {robot} está {state} em x {_decimal(x, ',')} m, y {_decimal(y, ',')} m."
+    else:
+        text = f"{robot} is {state} at x {_decimal(x)} m, y {_decimal(y)} m."
+    if status["last_error"]:
+        text += f" ({status['last_error']})"
+    return PlanOutcome("completed", language, text)
 
 
 async def _move_to(
@@ -108,9 +288,9 @@ async def _move_to(
         return PlanOutcome("completed", language, _refused(robot, move["error_code"], language))
     final, _ = await dispatcher.call("wait_for_arrival", {"robot_id": robot})
     if final["nav_state"] == "failed":
-        text = _not_reached(robot, destination.label, final["last_error"], language)
+        text = _not_reached(robot, destination.describe(language), final["last_error"], language)
     else:
-        text = _arrived(robot, destination.label, final, language)
+        text = _arrived(robot, destination.describe(language), final, language)
     return PlanOutcome("completed", language, text)
 
 
@@ -133,16 +313,35 @@ def _not_reached(robot: str, label: str, last_error: str, language: Language) ->
     return f'{robot} did not reach "{label}": the destination could not be reached ({last_error}).'
 
 
-_NUMBER = r"(-?\d+(?:[.,]\d+)?)"
+# Números: vírgula ou ponto decimal; nas formas em que a vírgula separa x de y,
+# só ponto decimal.
+_NUM = r"-?\d+(?:[.,]\d+)?"
+_NUM_DOT = r"-?\d+(?:\.\d+)?"
+_COORDINATE_FORMS = (
+    rf"\bx\s*[=:]?\s*({_NUM})\s*[,;]?\s*y\s*[=:]?\s*({_NUM})",  # x 3,5 y -1 / x=2 y=1
+    rf"\(\s*({_NUM})\s*;\s*({_NUM})\s*\)",  # (1; 2,5)
+    rf"\(\s*({_NUM_DOT})\s*,\s*({_NUM_DOT})\s*\)",  # (2, 4)
+    rf"\b(?:to|para|ate)\s+({_NUM_DOT})\s*,\s*({_NUM_DOT})\b",  # to 2.0, 4.0
+)
+_YAW = re.compile(
+    rf"\b(?:facing|heading|yaw|virado para|virado a|orientacao|apontando para)\s*({_NUM})"
+)
 
 
 def _coordinate(text: str) -> Destination | None:
-    """Coordenada na forma "x 3,5 y -1" (as demais formas são do ticket 07)."""
-    match = re.search(rf"\bx\s*{_NUMBER}\s*,?\s*y\s*{_NUMBER}", text)
-    if match is None:
-        return None
-    x, y = (float(group.replace(",", ".")) for group in match.groups())
-    return Destination(f"x {match.group(1)} y {match.group(2)}", x, y)
+    """Coordenada em uma das formas aceitas, com yaw opcional em graus (SPEC-001)."""
+    for form in _COORDINATE_FORMS:
+        match = re.search(form, text)
+        if match is not None:
+            x, y = (_number(group) for group in match.groups())
+            yaw = _YAW.search(text)
+            yaw_rad = math.radians(_number(yaw.group(1))) if yaw else 0.0
+            return Destination("", x, y, yaw_rad, coordinate=True)
+    return None
+
+
+def _number(text: str) -> float:
+    return float(text.replace(",", "."))
 
 
 # Por que o backend recusou o comando, pelo `error_code` (ADR-0005).
@@ -173,11 +372,27 @@ def _refused(robot: str, error_code: str, language: Language) -> str:
     return f"The command for {robot} was refused ({error_code})."
 
 
-def _not_understood(language: Language) -> str:
+def _examples_text(language: Language) -> str:
     examples = "; ".join(f'"{example}"' for example in _EXAMPLES[language])
     if language == "pt":
         return f"Não entendi a instrução. Exemplos do que posso fazer: {examples}."
     return f"I did not understand the instruction. Examples of what I can do: {examples}."
+
+
+def _find_all[T](text: str, names: dict[str, T]) -> list[T]:
+    """Os nomes que aparecem no texto, sem contar duas vezes trechos sobrepostos
+    ("doca de carga" e "doca") nem dois apelidos do mesmo lugar."""
+    taken: list[tuple[int, int]] = []
+    found: list[T] = []
+    for name in sorted(names, key=len, reverse=True):
+        for match in re.finditer(rf"(?<![a-z0-9]){re.escape(name)}(?![a-z0-9])", text):
+            span = match.span()
+            if any(span[0] < end and start < span[1] for start, end in taken):
+                continue
+            taken.append(span)
+            if names[name] not in found:
+                found.append(names[name])
+    return found
 
 
 def _find[T](text: str, names: dict[str, T]) -> T | None:

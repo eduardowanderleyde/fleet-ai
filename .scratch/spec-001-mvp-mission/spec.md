@@ -96,6 +96,7 @@ O sistema inteiro sobe e passa nos testes **sem nenhuma chave de API**.
 | Cancelar | "pare o tb1", "cancel tb2" | `cancel_navigation` |
 
 - **Referências:** robôs pelo id ou por apelidos do cenário; lugares por nome ou sinônimos do cenário, em português e inglês. O yaw é opcional, em graus na instrução e radianos no contrato.
+- **Formas de coordenada** (ticket 07): `x 3,5 y -1` ou `x=3.5 y=-1` (vírgula ou ponto decimal); `(1; 2,5)` (ponto e vírgula separa, vírgula decimal aceita); `(2, 4)` e `to 2.0, 4.0` / `para 2.0, 4.0` (vírgula separa, só ponto decimal). Por isso `(2,5)` é x = 2, y = 5; para decimal com vírgula, use `;`. O yaw vem depois de "facing", "heading", "yaw", "virado para" ou "orientação", em graus.
 - **Não entendido:** sem intenção reconhecida, robô ausente quando a intenção exige um, ou mais de uma intenção na mesma instrução → status `not_understood`, sem chamar nenhuma ferramenta, com 3 exemplos de instruções válidas no idioma detectado.
 - **Lugar ou robô desconhecido:** `not_understood` com a lista de nomes válidos do cenário.
 - **Falha de comando** (robô desconhecido, papel sem movimento, robô já navegando): o plano para no passo que falhou e a missão termina `completed` com o texto final explicando a falha pelo `error_code`; para `ALREADY_NAVIGATING`, o texto sugere cancelar antes ("pare o tb1"). O planejador nunca cancela sozinho para enviar outro destino.

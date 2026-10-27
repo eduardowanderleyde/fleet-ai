@@ -6,8 +6,21 @@ from typing import Literal
 
 Language = Literal["pt", "en"]
 
-_PT_WORDS = {"leve", "levar", "mova", "mande", "envie", "va", "ate", "para", "o", "a", "robo"}
-_EN_WORDS = {"move", "send", "take", "go", "drive", "to", "the", "robot"}
+# Palavras que só aparecem num dos idiomas; artigos e preposições comuns aos dois
+# (como "a") ficam de fora (ticket 07).
+# Uma string por grupo, de propósito: como literal, o formatador põe uma palavra por
+# linha e a lista fica ilegível de revisar.
+_PT_WORDS = set(
+    "leve levar mova mover mande envie va ate para o os do da de robo robos frota "
+    "liste listar quais qual mostre existem sao onde esta estado posicao "
+    "pare parar cancele cancelar interrompa interromper aborte navegacao "
+    "depois graus virado".split()
+)
+_EN_WORDS = set(
+    "move send take go drive to the robot robots fleet "
+    "list which what show me are there where is how doing of position state "
+    "stop cancel abort halt then facing degrees you have".split()
+)
 
 
 def normalize(text: str) -> str:
