@@ -1,6 +1,6 @@
 # ADR-0005: Contrato de frota normalizado e navegação assíncrona
 
-**Status:** aceito (2026-10-26)
+**Status:** aceito (2026-10-26); pontos em aberto decididos no mesmo dia (HTTP 409 e 422, validação de papel, correlação do cancelamento, resolução de planejamento, validação dupla de lugares)
 **Altera:** ADR-0002 (o contrato deixa de copiar os formatos de resposta e erro do Fleet UI)
 
 ## Contexto
@@ -48,14 +48,34 @@ recusas 403 do backend HTTP. O `fleet-ui` continua sem alterações. O formato d
   NaN) é recusada na hora com HTTP 422 e `INVALID_REQUEST`.
 - Robô desconhecido e papel sem movimento são recusados na hora com HTTP 403
   (`UNKNOWN_ROBOT`, `ROLE_NOT_ALLOWED`), como as recusas do backend do Fleet UI.
-- Robô já navegando: recusa com `ALREADY_NAVIGATING`. Um novo destino exige
-  **cancelamento confirmado** antes: o `cancel` aceito e o estado de navegação
-  observado fora de `navigating`.
+- Robô já navegando: recusa com `ALREADY_NAVIGATING` (HTTP 409). Um novo
+  destino exige que o robô esteja fora de `navigating`; para interromper uma
+  navegação, o cliente cancela antes.
 - Destino bem formado é sempre aceito (`"Navigation started"`). Falhas de
   planejamento (destino ocupado, fora do mapa, sem caminho) aparecem na leitura
   seguinte do status como `nav_state: failed` e `last_error: NAV2_REJECTED`.
   `NAV2_ABORTED` fica reservado a falhas durante a execução.
-- `cancel` sem objetivo ativo: `success: false`, `CANCEL_FAILED`.
+- `cancel` sem objetivo ativo: `success: false`, `CANCEL_FAILED` (HTTP 409).
+- **Cancelamento confirmado exige correlação**, nunca só o estado observado. O
+  Executor só declara um cancelamento confirmado quando as três evidências
+  existem: (1) ele mesmo enviou o destino ativo daquele robô e o viu em
+  `navigating`; (2) o `cancel` para esse robô foi aceito; (3) a primeira leitura
+  de status depois disso mostra `idle`. O resultado do cancelamento é um de:
+  - `confirmed`: as três evidências;
+  - `ambiguous`: `cancel` aceito, mas o robô aparece em `failed` (por exemplo,
+    `NAV2_ABORTED`), ou o destino ativo não foi enviado por este Executor.
+    O robô não está mais navegando, mas o Executor não afirma que foi o
+    cancelamento que o parou;
+  - `not_confirmed`: `cancel` aceito e o robô continua em `navigating` até o
+    timeout.
+  Um `NAV2_ABORTED` nunca é, sozinho, evidência de cancelamento.
+- **Limitação do Fleet UI:** o status não identifica o objetivo (não há id de
+  goal), e outros clientes, como a interface web do Fleet UI, podem enviar
+  destinos ao mesmo robô. A correlação é por robô e pela ordem dos eventos que o
+  próprio Executor observou. No Fleet UI, o orquestrador marca `idle` ao aceitar
+  o cancelamento e pode trocar para `failed` / `NAV2_ABORTED` logo depois; por
+  isso o resultado depende de qual estado a leitura pega, e `ambiguous` é um
+  resultado legítimo, não um erro.
 - A causa detalhada de cada falha (por exemplo, `target_occupied`,
   `target_out_of_map`, `no_path`) vai para um log estruturado do SimFleet, com
   robô e destino. Ela não faz parte do contrato.
@@ -72,10 +92,19 @@ recusas 403 do backend HTTP. O `fleet-ui` continua sem alterações. O formato d
 
 **SimFleet: decisões de simulação do MVP.**
 
-- A\* 8-conectado numa grade de planejamento de 0,1 m (`cell_m`). A redução de
-  resolução é conservadora: uma célula de planejamento é bloqueada se qualquer
-  pixel dela estiver bloqueado na grade inflada da resolução original. A
-  célula de partida do robô é sempre considerada livre.
+- O papel de cada robô é validado ao carregar o cenário: só `MUUT`, `FUUT` ou
+  `SU`.
+- A\* 8-conectado numa **grade de planejamento** cuja resolução
+  (`planning_resolution`, no cenário) é obrigatoriamente um múltiplo inteiro da
+  resolução do mapa; um valor que não seja múltiplo impede o cenário de
+  carregar. Sem o campo, usa-se o múltiplo mais próximo de 0,1 m. No warehouse
+  (mapa de 0,03 m/px), 0,09 m.
+- A redução é conservadora: uma célula de planejamento é bloqueada se qualquer
+  pixel dela estiver bloqueado na grade inflada da resolução original. A célula
+  de partida do robô é sempre considerada livre.
+- Lugares nomeados são validados ao carregar nas duas grades, a inflada
+  original e a de planejamento; um lugar bloqueado em qualquer uma delas impede
+  o cenário de carregar.
 - O caminho é suavizado por linha de visada, e cada segmento é validado contra
   a grade inflada da resolução original.
 - Movimento cinemático: velocidade linear constante (0,3 m/s por padrão), yaw
@@ -97,8 +126,11 @@ recusas 403 do backend HTTP. O `fleet-ui` continua sem alterações. O formato d
   o formato bruto, não o normalizado.
 - Planejadores tratam todos os backends do mesmo jeito: mover, aguardar o fim
   da navegação, ler o estado final.
-- Depois de um cancelamento próprio, `failed` / `NAV2_ABORTED` não é tratado
-  como erro da missão, porque o Fleet UI pode produzi-lo ao concluir o cancel.
+- Planejadores relatam o resultado do cancelamento como ele é: `confirmed`,
+  `ambiguous` ou `not_confirmed`. O texto final de uma missão nunca afirma que
+  um cancelamento ocorreu sem o resultado `confirmed`.
+- No SimFleet o cancelamento aceito sempre leva a `idle`, então o resultado é
+  `confirmed` sempre que o destino ativo veio do mesmo Executor.
 - Os HTTP 409 de `ALREADY_NAVIGATING` e `CANCEL_FAILED` são do contrato
   normalizado; no Fleet UI essas recusas chegam com HTTP 200, e o adaptador
   normaliza.

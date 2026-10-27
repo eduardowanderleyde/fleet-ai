@@ -73,7 +73,7 @@ O sistema inteiro sobe e passa nos testes **sem nenhuma chave de API**.
 
 - **Serviço Fleet AI (FastAPI):** API pública de missões, executor de missões, planejadores, ferramentas, Executor, guardas e configuração.
 - **Serviço SimFleet (FastAPI):** implementa o contrato de frota sobre um cenário. Processo e imagem próprios.
-- **Executor e adaptadores de frota:** o Executor é portado do `fleet-ui`, com a correção de pose por robô, mais duas operações compostas: aguardar o fim da navegação e cancelar com confirmação (ambas por polling do status, com intervalo e timeout configuráveis). Ele fala o contrato normalizado. O adaptador `sim` repassa as respostas do SimFleet; o adaptador `fleet_ui` é o **único** lugar que traduz as respostas brutas do Fleet UI para o contrato (ADR-0005). Falhas de comando chegam aos planejadores como erro com `error_code`.
+- **Executor e adaptadores de frota:** o Executor é portado do `fleet-ui`, com a correção de pose por robô, mais duas operações compostas: aguardar o fim da navegação e cancelar com verificação (ambas por polling do status, com intervalo e timeout configuráveis). O Executor lembra, por robô, o destino ativo que ele mesmo enviou, para correlacionar cancelamentos (ADR-0005). Ele fala o contrato normalizado. O adaptador `sim` repassa as respostas do SimFleet; o adaptador `fleet_ui` é o **único** lugar que traduz as respostas brutas do Fleet UI para o contrato (ADR-0005). Falhas de comando chegam aos planejadores como erro com `error_code`.
 - **Ferramentas e despachante:** um único despachante recebe `(nome da ferramenta, entrada)`, aplica o escopo de robô, chama o Executor e devolve o resultado ou o erro. Os dois planejadores usam o mesmo despachante.
 - **Porta de planejador:** recebe a instrução, o escopo de robô opcional e o despachante; devolve status, passos e texto final. Duas implementações:
   - **Planejador determinístico** (padrão): normaliza o texto, reconhece uma intenção e seus argumentos por regras, monta um plano fixo de chamadas e o executa pelo despachante.
@@ -100,6 +100,7 @@ O sistema inteiro sobe e passa nos testes **sem nenhuma chave de API**.
 - **Falha de comando** (robô desconhecido, papel sem movimento, robô já navegando): o plano para no passo que falhou e a missão termina `completed` com o texto final explicando a falha pelo `error_code`; para `ALREADY_NAVIGATING`, o texto sugere cancelar antes ("pare o tb1"). O planejador nunca cancela sozinho para enviar outro destino.
 - **Falha de navegação** (destino inválido ou abortado): o `move_robot` é aceito e a falha aparece no resultado do `wait_for_arrival` (`nav_state: failed`, `last_error`); a missão termina `completed` com o texto final explicando a falha.
 - Em todos os casos a missão foi entendida e executada até onde o backend permitiu; por isso o status é `completed`, e o sucesso ou a falha da ação ficam no texto final e nos passos.
+- **Cancelar:** o texto final reflete o resultado do cancelamento; só diz que a navegação foi cancelada com `confirmed`. Com `ambiguous`, diz que o robô parou mas que não é possível afirmar que foi pelo cancelamento; com `not_confirmed`, diz que o robô continua navegando.
 - O planejador determinístico não faz chamadas de rede além do despachante e não tem aleatoriedade.
 
 ### Planejador LLM (desligado por padrão)
@@ -117,7 +118,7 @@ O sistema inteiro sobe e passa nos testes **sem nenhuma chave de API**.
 | `get_robot_status` | `GET /api/status` (filtra o robô; pose de `poses[robot_id]`) |
 | `move_robot` | `POST /api/go_to_point` |
 | `wait_for_arrival` | polling de `GET /api/status` até o estado de navegação sair de `navigating`; devolve estado final, `last_error` e pose |
-| `cancel_navigation` | `POST /api/cancel` e, se aceito, polling até o estado sair de `navigating` (cancelamento confirmado) |
+| `cancel_navigation` | `POST /api/cancel` e, se aceito, polling até o estado sair de `navigating`; devolve o resultado `confirmed`, `ambiguous` ou `not_confirmed` |
 
 As demais ferramentas do `fleet-ui` (gravação, replay, coleta, experimentos, campanhas, Analyst) não entram na SPEC-001.
 
@@ -131,7 +132,9 @@ Mesmos caminhos e parâmetros do `fleet-ui@a57a3b1`. Consultas sem mudança de f
 - `POST /api/cancel?robot_id` → aceito: `200 {"success": true, "message": "Cancel requested", "error_code": ""}`, e o robô passa a `idle` na pose em que estava.
 - Estado de navegação (`nav_state`): `idle`, `navigating`, `failed`. Na chegada: `idle` e `last_error` vazio.
 - **Navegação assíncrona:** um destino bem formado é sempre aceito; falhas de planejamento aparecem na leitura seguinte do status como `failed` com `last_error: NAV2_REJECTED`. `NAV2_ABORTED` fica para falhas durante a execução (o SimFleet do MVP não as produz).
-- **Cancelamento confirmado:** um novo destino só é aceito com o robô fora de `navigating`. Depois de um cancelamento próprio, `failed` / `NAV2_ABORTED` não conta como falha da missão, porque o Fleet UI pode produzi-lo ao concluir o cancelamento.
+- **Novo destino:** só é aceito com o robô fora de `navigating` (senão `ALREADY_NAVIGATING`).
+- **Resultado do cancelamento** (decidido no Executor, por correlação, ADR-0005): `confirmed` só quando este Executor enviou o destino ativo do robô e o viu em `navigating`, o `cancel` foi aceito e a primeira leitura seguinte mostra `idle`; `ambiguous` quando o `cancel` foi aceito mas o robô aparece em `failed` (por exemplo, `NAV2_ABORTED`) ou o destino ativo não veio deste Executor; `not_confirmed` quando o robô continua em `navigating` até o timeout. `NAV2_ABORTED` nunca é, sozinho, evidência de cancelamento.
+- **Limitação do Fleet UI:** o status não tem id de objetivo, e outros clientes podem enviar destinos ao mesmo robô; a correlação é por robô e pela ordem dos eventos observados pelo Executor. Por isso `ambiguous` é um resultado legítimo.
 
 | `error_code` | Quando | HTTP | Onde aparece |
 |---|---|---|---|
@@ -149,8 +152,8 @@ Mesmos caminhos e parâmetros do `fleet-ui@a57a3b1`. Consultas sem mudança de f
 
 ### SimFleet
 
-- **Cenário:** imagem do mapa de ocupação, resolução (m/pixel), origem, raio de inflação, robôs (id, papel, apelidos, pose inicial) e lugares nomeados (nome, sinônimos PT/EN, x, y, yaw). O cenário padrão é o warehouse do `fleet-ui` (imagem `warehouse_map.png` e parâmetros do cenário de alocação de `windows-version`), com dois robôs MUUT, um FUUT e ao menos 5 lugares nomeados.
-- **Grade de planejamento:** células de `cell_m` (padrão 0,1 m, no cenário). Redução conservadora: a célula é bloqueada se qualquer pixel dela estiver bloqueado na grade inflada da resolução original. A célula de partida do robô é sempre considerada livre. O destino é válido se estiver livre na grade inflada original **e** na grade de planejamento.
+- **Cenário:** imagem do mapa de ocupação, resolução (m/pixel), origem, raio de inflação, resolução de planejamento, velocidade, robôs (id, papel, apelidos, pose inicial) e lugares nomeados (nome, sinônimos PT/EN, x, y, yaw). O papel é validado ao carregar: só `MUUT`, `FUUT` ou `SU`. O cenário padrão é o warehouse do `fleet-ui` (imagem `warehouse_map.png` e parâmetros do cenário de alocação de `windows-version`), com dois robôs MUUT, um FUUT e ao menos 5 lugares nomeados.
+- **Grade de planejamento:** resolução `planning_resolution` (no cenário), obrigatoriamente múltiplo inteiro da resolução do mapa; valor não múltiplo impede o cenário de carregar. Sem o campo, usa-se o múltiplo mais próximo de 0,1 m. No warehouse, 0,09 m (3 × 0,03 m). Redução conservadora: a célula é bloqueada se qualquer pixel dela estiver bloqueado na grade inflada da resolução original. A célula de partida do robô é sempre considerada livre. O destino é válido se estiver livre na grade inflada original **e** na grade de planejamento. Lugares nomeados são validados nas duas grades ao carregar o cenário.
 - **Caminho:** A* 8-conectado na grade de planejamento, sem cortar quinas, seguido de suavização por linha de visada; todo segmento do caminho final é validado contra a grade inflada da resolução original. O último ponto é exatamente o destino.
 - **Movimento (MVP, não é simulação física fiel):** velocidade linear constante (`speed_mps`, padrão 0,3 m/s, no cenário); yaw alinhado a cada segmento instantaneamente; na chegada, assume o yaw pedido e volta a `idle`.
 - **Relógio:** injetável. Em produção, relógio real com fator de escala configurável. Nos testes, relógio manual que avança um passo fixo a cada leitura de status, sem esperas reais.

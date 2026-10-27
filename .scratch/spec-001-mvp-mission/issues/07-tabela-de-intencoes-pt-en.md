@@ -13,3 +13,4 @@
 - [ ] Duas intenções na mesma instrução ("vá até A e depois até B") → `not_understood` explicando que só uma ação por missão é suportada
 - [ ] Mesma instrução produz sempre o mesmo plano (determinismo verificado repetindo os casos)
 - [ ] Os exemplos devolvidos em `not_understood` são todos entendidos pelo próprio planejador (teste dedicado)
+- [ ] Intenção cancelar: o texto final só afirma que a navegação foi cancelada com resultado `confirmed`; com `ambiguous` diz que o robô parou sem afirmar a causa; com `not_confirmed` diz que o robô continua navegando; com `CANCEL_FAILED` diz que não havia navegação ativa (testes `test_cancel_text_reflects_confirmed`, `..._ambiguous`, `..._not_confirmed`, `..._without_active_navigation`, nos dois idiomas)

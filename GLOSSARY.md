@@ -72,7 +72,15 @@ A sequência de poses que um robô de fato ocupou ao longo do tempo.
 _Avoid_: caminho (o planejado), rota (a gravada no Fleet UI)
 
 **Cancelamento confirmado**:
-Um cancelamento aceito pelo backend e seguido de um estado de navegação fora de `navigating`; só depois dele um novo destino pode ser enviado.
+Um cancelamento que o Fleet AI pode afirmar que parou o robô, porque ligou o pedido aceito ao destino ativo que ele mesmo enviou e viu o robô parado logo em seguida.
+_Avoid_: cancelamento aceito (aceitar o pedido não prova que o robô parou por causa dele)
+
+**Cancelamento ambíguo**:
+Um cancelamento aceito depois do qual o robô parou, mas sem evidência de que parou por causa dele.
+
+**Grade de planejamento**:
+A versão reduzida e conservadora do mapa sobre a qual o SimFleet calcula caminhos.
+_Avoid_: mapa (o mapa é a imagem original)
 
 **Código de erro**:
 O identificador estável de por que um comando ou uma navegação falhou, compartilhado com o Fleet UI (por exemplo, `ALREADY_NAVIGATING`).

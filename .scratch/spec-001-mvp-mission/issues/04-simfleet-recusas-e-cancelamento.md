@@ -9,12 +9,12 @@
 - [ ] `x`, `y` ou `yaw` ausente, não numérico, infinito ou NaN, ou `robot_id` ausente → `422`, `success: false`, `error_code: INVALID_REQUEST`; nenhum estado muda
 - [ ] `go_to_point` ou `cancel` para robô fora do cenário → `403`, `UNKNOWN_ROBOT`
 - [ ] `go_to_point` para robô FUUT ou SU → `403`, `ROLE_NOT_ALLOWED`; a pose não muda
-- [ ] **(proposto, a confirmar)** O papel do robô no cenário é validado ao carregar: valores fora de `MUUT`, `FUUT`, `SU` impedem o serviço de subir (ver comentário abaixo)
+- [ ] O papel do robô no cenário é validado ao carregar: valores fora de `MUUT`, `FUUT`, `SU` (por exemplo, `"MUTT"`) impedem o serviço de subir com `ScenarioError` que cita o robô e o papel
 - [ ] Destino ocupado, perto demais de obstáculo, fora do mapa ou sem caminho → `200 "Navigation started"`; na leitura seguinte, `nav_state: failed`, `last_error: NAV2_REJECTED`, pose inalterada
 - [ ] Cada navegação falhada gera uma linha de log estruturado com robô, destino, `error_code` e causa (`target_occupied`, `target_out_of_map`, `no_path`)
 - [ ] Um `go_to_point` válido depois de `failed` é aceito e chega normalmente; `last_error` volta a vazio na chegada
-- [ ] `cancel` durante a navegação → `200 {"success": true, "message": "Cancel requested", "error_code": ""}`; o robô fica `idle` na pose em que estava, e as leituras seguintes não mudam a pose
-- [ ] Depois do cancelamento confirmado, um novo `go_to_point` é aceito
+- [ ] `cancel` durante a navegação → `200 {"success": true, "message": "Cancel requested", "error_code": ""}`; a primeira leitura seguinte já mostra `idle` (nunca `failed`), na pose em que estava, e as leituras seguintes não mudam a pose
+- [ ] Depois de um `cancel` aceito (robô em `idle`), um novo `go_to_point` é aceito
 - [ ] `cancel` com o robô em `idle` ou `failed` → `409`, `success: false`, `error_code: CANCEL_FAILED`, sem efeito colateral
 
 ## Testes previstos
@@ -31,10 +31,10 @@ Seam: API HTTP do SimFleet em processo, relógio manual injetado; logs capturado
 | Log da causa | `test_failed_navigation_logs_the_detailed_cause` |
 | Recuperação | `test_valid_destination_after_failure_arrives_and_clears_last_error` |
 | Cancelar navegando | `test_cancel_stops_the_robot_where_it_is` |
-| Novo destino após cancelar | `test_new_destination_after_confirmed_cancel_is_accepted` |
+| Novo destino após cancelar | `test_new_destination_after_accepted_cancel_is_accepted` |
 | Cancelar sem navegação | `test_cancel_without_active_navigation_fails_with_cancel_failed` |
 
 ## Comments
 
 - 2026-10-26 (ticket 02): o papel do robô ainda é texto livre no cenário (`"MUTT"` carregaria sem erro). Ao implementar a recusa por papel, decidir se o cenário passa a validar `MUUT`/`FUUT`/`SU`; no Fleet UI, papel desconhecido apenas não se move.
-- 2026-10-26 (grilling): proposto validar o papel no carregamento do cenário (critério acima); aguarda confirmação do dono.
+- 2026-10-26 (grilling): validação do papel no carregamento aprovada pelo dono (ADR-0005).
