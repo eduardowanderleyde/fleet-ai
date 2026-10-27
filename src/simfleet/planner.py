@@ -24,28 +24,49 @@ _STEPS = (
 )
 
 
-def plan_path(grid: OccupancyGrid, start: Point, goal: Point) -> list[Point] | None:
-    """Caminho de `start` até exatamente `goal`, ou None se não houver."""
+class PlanningFailed(Exception):
+    """Não há caminho até o destino; `cause` vai para o log estruturado (ADR-0005)."""
+
+    def __init__(self, cause: str) -> None:
+        super().__init__(cause)
+        self.cause = cause
+
+
+def plan_path(grid: OccupancyGrid, start: Point, goal: Point) -> list[Point]:
+    """Caminho de `start` até exatamente `goal`.
+
+    Levanta PlanningFailed com a causa: `target_out_of_map`, `target_occupied`
+    (ocupado ou perto demais de obstáculo) ou `no_path`.
+    """
     start_cell = grid.planning_cell(*start)
     goal_cell = grid.planning_cell(*goal)
-    if start_cell is None or goal_cell is None:
-        return None
+    if goal_cell is None or not grid.contains(*goal):
+        raise PlanningFailed("target_out_of_map")
     if not grid.is_free(*goal) or not grid.is_free_for_planning(*goal):
-        return None
-    cells = _astar(grid, start_cell, goal_cell)
+        raise PlanningFailed("target_occupied")
+    if start_cell is None:
+        raise PlanningFailed("no_path")
+    cells = _astar(grid, start, start_cell, goal_cell)
     if cells is None:
-        return None
-    raw = [start, *(grid.cell_center(cell) for cell in cells[1:-1]), goal]
-    return _smooth(grid, raw)
+        raise PlanningFailed("no_path")
+    path = _smooth(grid, [start, *map(grid.cell_center, cells[1:-1]), goal])
+    if path is None:
+        raise PlanningFailed("no_path")
+    return path
 
 
-def _astar(grid: OccupancyGrid, start: Cell, goal: Cell) -> list[Cell] | None:
+def _astar(grid: OccupancyGrid, origin: Point, start: Cell, goal: Cell) -> list[Cell] | None:
     blocked = grid.planning_blocked
     rows, cols = blocked.shape
 
     def free(cell: Cell) -> bool:
         # A célula de partida é sempre livre: o robô pode sair de perto de um obstáculo.
         return cell == start or not blocked[cell]
+
+    def leaves_start(nxt: Cell) -> bool:
+        # A célula de partida pode ter pixels bloqueados; o primeiro passo só vale se
+        # o segmento da pose real do robô até o centro da vizinha estiver livre.
+        return grid.segment_is_free(origin, grid.cell_center(nxt))
 
     def heuristic(cell: Cell) -> float:
         dr, dc = abs(cell[0] - goal[0]), abs(cell[1] - goal[1])
@@ -68,7 +89,12 @@ def _astar(grid: OccupancyGrid, start: Cell, goal: Cell) -> list[Cell] | None:
             nxt = (cell[0] + dr, cell[1] + dc)
             if not (0 <= nxt[0] < rows and 0 <= nxt[1] < cols) or not free(nxt):
                 continue
-            if dr and dc and not (free((cell[0] + dr, cell[1])) and free((cell[0], cell[1] + dc))):
+            if cell == start:
+                if not leaves_start(nxt):
+                    continue
+            elif (
+                dr and dc and not (free((cell[0] + dr, cell[1])) and free((cell[0], cell[1] + dc)))
+            ):
                 continue  # não corta quina
             new_cost = cost + step
             if new_cost < best.get(nxt, math.inf):

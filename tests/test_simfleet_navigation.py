@@ -1,7 +1,6 @@
 import math
 import time
 from pathlib import Path
-from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,29 +8,7 @@ from fastapi.testclient import TestClient
 from simfleet.app import create_app
 from simfleet.clock import SteppingClock
 from tests.scenarios import OPEN_ROOM, room_scenario, write_scenario
-
-STEP_S = 0.1
-
-
-def room_client(
-    tmp_path: Path, scenario: dict[str, Any] | None = None, drawing: str = OPEN_ROOM
-) -> TestClient:
-    path = write_scenario(tmp_path, scenario or room_scenario(), drawing)
-    return TestClient(create_app(path, clock=SteppingClock(STEP_S)))
-
-
-def drive(
-    client: TestClient, robot_id: str, max_reads: int = 2000
-) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    """Lê o status até o robô sair de `navigating`; devolve o estado final e as poses vistas."""
-    poses = []
-    for _ in range(max_reads):
-        status = client.get("/api/status").json()
-        robot = next(r for r in status["robots"] if r["robot_id"] == robot_id)
-        poses.append(status["poses"][robot_id])
-        if robot["nav_state"] != "navigating":
-            return robot, poses
-    raise AssertionError(f"{robot_id} ainda navegando depois de {max_reads} leituras")
+from tests.simfleet_client import STEP_S, drive, room_client
 
 
 def test_go_to_point_starts_navigation(tmp_path: Path) -> None:
@@ -265,3 +242,22 @@ def test_time_scale_comes_from_the_service_configuration(
 
     robot = client.get("/api/status").json()["robots"][0]
     assert robot["nav_state"] == "idle"
+
+
+def test_robot_next_to_an_obstacle_can_still_leave(tmp_path: Path) -> None:
+    # Sala de 1,5 m em pixels de 0,05 m, um pixel ocupado em x, y = 0,50..0,55 m, na
+    # mesma célula de planejamento (0,1 m) do robô, que está no pixel vizinho.
+    rows = OPEN_ROOM.splitlines()
+    row = len(rows) - 1 - 10
+    rows[row] = rows[row][:10] + "#" + rows[row][11:]
+    drawing = "\n".join(rows)
+    scenario = room_scenario()
+    scenario["map"].update(resolution=0.05, planning_resolution=0.1)
+    scenario["robots"] = [{"id": "r1", "role": "MUUT", "start": [0.575, 0.575, 0.0], "aliases": []}]
+    client = room_client(tmp_path, scenario, drawing)
+
+    client.post("/api/go_to_point", params={"robot_id": "r1", "x": 0.2, "y": 0.2})
+    robot, poses = drive(client, "r1")
+
+    assert robot["nav_state"] == "idle"
+    assert all(pixel(drawing, p["x"], p["y"], resolution=0.05) == "." for p in poses)

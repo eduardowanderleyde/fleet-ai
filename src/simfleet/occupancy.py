@@ -49,6 +49,14 @@ class OccupancyGrid:
         self.cell_size = resolution * factor
         self.planning_blocked = _reduce(self.blocked, factor)
 
+    def contains(self, x: float, y: float) -> bool:
+        """Dentro dos limites do mapa."""
+        rows, cols = self.blocked.shape
+        return bool(
+            0 <= (y - self.origin[1]) / self.resolution < rows
+            and 0 <= (x - self.origin[0]) / self.resolution < cols
+        )
+
     def is_free(self, x: float, y: float) -> bool:
         """Livre na grade inflada da resolução original."""
         row = math.floor((y - self.origin[1]) / self.resolution)

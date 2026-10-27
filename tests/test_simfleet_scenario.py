@@ -276,3 +276,12 @@ def test_place_blocked_only_on_the_planning_grid_prevents_startup(tmp_path: Path
 
     with pytest.raises(ScenarioError, match="pillar.*planejamento"):
         create_app(write_scenario(tmp_path, scenario, "\n".join(rows)))
+
+
+@pytest.mark.parametrize("role", ["MUTT", "muut", ""])
+def test_unknown_role_in_scenario_prevents_startup(tmp_path: Path, role: str) -> None:
+    scenario = small_scenario()
+    scenario["robots"][1]["role"] = role
+
+    with pytest.raises(ScenarioError, match=f"r2.*papel.*'{role}'"):
+        create_app(write_scenario(tmp_path, scenario))

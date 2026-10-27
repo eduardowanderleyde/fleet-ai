@@ -34,3 +34,4 @@ Seams: Executor contra o SimFleet em processo (adaptador `sim`) e contra o fake 
 ## Comments
 
 - 2026-10-26 (ticket 01): a suíte usa `httpx2` (o Starlette 1.10 depreciou `httpx` no `TestClient`) e `httpx` não está instalado. Portar o Executor já sobre `httpx2.AsyncClient`; o `ASGITransport` existe no `httpx2` 2.16.
+- 2026-10-26 (ticket 04): no SimFleet, `robot_id=""` recebe 403 `UNKNOWN_ROBOT`. No Fleet UI, `""` é o robô padrão do modo de robô único. O adaptador `fleet_ui` e o fake devem tratar `""` explicitamente (por exemplo, recusar com `UNKNOWN_ROBOT` antes de chamar o Fleet UI) para os dois adaptadores se comportarem igual.

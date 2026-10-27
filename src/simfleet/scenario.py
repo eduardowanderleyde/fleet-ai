@@ -36,6 +36,9 @@ class Place:
     pose: Pose
 
 
+# Papéis do Fleet UI: só MUUT se move; FUUT e SU são fixos.
+ROLES = ("MUUT", "FUUT", "SU")
+
 DEFAULT_SPEED_MPS = 0.3
 DEFAULT_PLANNING_RESOLUTION = 0.1
 
@@ -80,6 +83,11 @@ def load_scenario(path: Path) -> Scenario:
         path, "apelido", [alias for robot in scenario.robots for alias in robot.aliases]
     )
     for robot in scenario.robots:
+        if robot.role not in ROLES:
+            raise ScenarioError(
+                f"{path}: robô {robot.id} tem papel desconhecido '{robot.role}' "
+                f"(válidos: {', '.join(ROLES)})"
+            )
         if not grid.is_free(robot.start.x, robot.start.y):
             raise ScenarioError(
                 f"{path}: robô {robot.id} começa em célula ocupada ou perto demais de obstáculo"

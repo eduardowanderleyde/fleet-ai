@@ -10,10 +10,10 @@ por regras; não há LLM pago nem agente autônomo consumindo tokens. A integra�
 com modelos reais é uma funcionalidade futura, opcional e desligada por padrão
 ([ADR-0004](docs/adr/0004-planejador-deterministico-e-llm-opcional.md)).
 
-> **Status: em implementação.** SPEC-001 (MVP), tickets 01 a 03 de 12 concluídos:
-> o SimFleet carrega o warehouse e navega robôs até um destino com A* e
-> suavização, de forma assíncrona. Ainda não há recusas completas, Executor nem
-> missões.
+> **Status: em implementação.** SPEC-001 (MVP), tickets 01 a 04 de 12 concluídos:
+> o SimFleet cumpre o contrato de frota normalizado (navegação assíncrona com A*,
+> recusas com código de erro, falhas em `last_error`, cancelamento). Ainda não há
+> Executor nem missões.
 
 ## Origem
 
@@ -108,6 +108,12 @@ planejamento reduzida de forma conservadora (0,09 m no warehouse), caminho
 suavizado sem tocar a área inflada dos obstáculos, velocidade constante
 (0,3 m/s) e giro instantâneo. Não é uma simulação física fiel. O relógio
 simulado pode ser acelerado com `SIMFLEET_TIME_SCALE`.
+
+Comandos respondem `{"success", "message", "error_code"}`. Recusas imediatas:
+`INVALID_REQUEST` (422), `UNKNOWN_ROBOT` e `ROLE_NOT_ALLOWED` (403),
+`ALREADY_NAVIGATING` e `CANCEL_FAILED` (409). Destinos impossíveis são aceitos e
+falham no status com `last_error: NAV2_REJECTED`; a causa (`target_occupied`,
+`target_out_of_map`, `no_path`) vai para o log `simfleet.navigation`.
 
 A suíte remove do ambiente qualquer variável `*_API_KEY` e falha se algum SDK de
 LLM pago aparecer no `uv.lock`, inclusive como dependência indireta.

@@ -1,15 +1,29 @@
 """Estado da frota simulada: poses e estado de navegação de cada robô."""
 
+import logging
 import math
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from simfleet.clock import Clock
 from simfleet.occupancy import OccupancyGrid
-from simfleet.planner import Point, plan_path
+from simfleet.planner import PlanningFailed, Point, plan_path
 from simfleet.scenario import Pose, Robot, Scenario
 
 NavState = Literal["idle", "navigating", "failed"]
+
+# Códigos de erro do contrato normalizado (ADR-0005); "" significa sucesso.
+CommandError = Literal[
+    "",
+    "INVALID_REQUEST",
+    "UNKNOWN_ROBOT",
+    "ROLE_NOT_ALLOWED",
+    "ALREADY_NAVIGATING",
+    "CANCEL_FAILED",
+]
+NavigationError = Literal["", "NAV2_REJECTED", "NAV2_ABORTED"]
+
+log = logging.getLogger("simfleet.navigation")
 
 
 @dataclass
@@ -41,7 +55,7 @@ class RobotState:
     robot: Robot
     pose: Pose
     nav_state: NavState = "idle"
-    last_error: str = ""
+    last_error: NavigationError = ""
     navigation: Navigation | None = None
 
 
@@ -51,7 +65,7 @@ class CommandResult:
 
     success: bool
     message: str
-    error_code: str = ""
+    error_code: CommandError = ""
 
     @property
     def http_status(self) -> int:
@@ -71,23 +85,57 @@ class Fleet:
         }
 
     def go_to_point(self, robot_id: str, x: float, y: float, yaw: float) -> CommandResult:
-        state = self._robots[robot_id]
+        if not all(math.isfinite(value) for value in (x, y, yaw)):
+            return CommandResult(False, "Invalid request: non-finite coordinate", "INVALID_REQUEST")
+        state = self._robots.get(robot_id)
+        if state is None:
+            return _unknown_robot(robot_id)
+        if state.robot.role != "MUUT":
+            return CommandResult(
+                False, f"{robot_id}: role {state.robot.role} cannot move", "ROLE_NOT_ALLOWED"
+            )
         now = self._clock.now()
         self._advance(state, now)
         if state.nav_state == "navigating":
             return CommandResult(False, "Already navigating", "ALREADY_NAVIGATING")
-        path = plan_path(self._grid, (state.pose.x, state.pose.y), (x, y))
-        if path is None:
-            # Falha assíncrona (ADR-0005): aparece no status como failed / NAV2_REJECTED.
-            # Códigos de causa, log e testes dessa falha são do ticket 04.
+        try:
+            path = plan_path(self._grid, (state.pose.x, state.pose.y), (x, y))
+        except PlanningFailed as failure:
+            # Falha assíncrona (ADR-0005): o comando é aceito e o status mostra a falha.
             state.navigation = None
             state.nav_state = "failed"
             state.last_error = "NAV2_REJECTED"
+            log.warning(
+                "navigation_failed robot=%s destination=(%s, %s) error_code=%s cause=%s",
+                robot_id,
+                x,
+                y,
+                state.last_error,
+                failure.cause,
+                extra={
+                    "robot_id": robot_id,
+                    "destination": {"x": x, "y": y},
+                    "error_code": state.last_error,
+                    "cause": failure.cause,
+                },
+            )
         else:
             state.navigation = Navigation(path, yaw, now)
             state.nav_state = "navigating"
             state.last_error = ""
         return CommandResult(success=True, message="Navigation started")
+
+    def cancel(self, robot_id: str) -> CommandResult:
+        state = self._robots.get(robot_id)
+        if state is None:
+            return _unknown_robot(robot_id)
+        self._advance(state, self._clock.now())
+        if state.nav_state != "navigating":
+            return CommandResult(False, "No active goal", "CANCEL_FAILED")
+        # O robô para onde estiver agora; como no orquestrador do Fleet UI, já fica idle.
+        state.navigation = None
+        state.nav_state = "idle"
+        return CommandResult(success=True, message="Cancel requested")
 
     def robots(self) -> list[RobotState]:
         """Avança a simulação até agora e devolve o estado de cada robô."""
@@ -108,4 +156,14 @@ class Fleet:
 
 
 # HTTP de cada recusa do contrato normalizado (ADR-0005).
-_HTTP_STATUS = {"ALREADY_NAVIGATING": 409}
+_HTTP_STATUS: dict[CommandError, int] = {
+    "INVALID_REQUEST": 422,
+    "UNKNOWN_ROBOT": 403,
+    "ROLE_NOT_ALLOWED": 403,
+    "CANCEL_FAILED": 409,
+    "ALREADY_NAVIGATING": 409,
+}
+
+
+def _unknown_robot(robot_id: str) -> CommandResult:
+    return CommandResult(False, f"Unknown robot {robot_id!r}", "UNKNOWN_ROBOT")
