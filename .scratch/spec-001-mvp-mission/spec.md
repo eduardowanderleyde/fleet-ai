@@ -4,6 +4,7 @@
 **Aprovada em:** 2026-10-26 (revisada no mesmo dia: sem APIs pagas, ADR-0004; contrato normalizado e navegação assíncrona, ADR-0005)
 **Referência de código:** `fleet-ui@a57a3b1` (ver ADR-0001)
 **Decisões relacionadas:** ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005
+**Revisões:** 2026-10-27, encerramento garantido de missões (ticket 13)
 
 ## Problem Statement
 
@@ -164,10 +165,19 @@ Mesmos caminhos e parâmetros do `fleet-ui@a57a3b1`. Consultas sem mudança de f
 
 - `POST /v1/missions` com `{"instruction": str, "robot_id": str | null}` → `202 {"mission_id": str, "status": "running"}`. A missão roda em segundo plano.
 - `GET /v1/missions/{mission_id}` → `{"mission_id", "status", "instruction", "robot_id", "planner", "language", "steps": [{"tool", "input", "result", "is_error"}], "final_text", "created_at", "finished_at"}`
-- Status: `running`, `completed`, `not_understood`, `incomplete` (tempo máximo ou, no planejador LLM, limite de turnos), `failed` (erro interno ou backend de frota indisponível), `rejected` (barrada por uma guarda).
+- Status: `running`, `completed`, `not_understood`, `incomplete` (tempo máximo da missão, navegação que não terminou no prazo do Executor (`ExecutorTimeout`) ou, no planejador LLM, limite de turnos), `failed` (erro interno, cancelamento da tarefa ou backend de frota indisponível), `rejected` (barrada por uma guarda). `running` é o único status não terminal.
 - Recusas: `422` entrada inválida, `429` taxa ou concorrência (com `Retry-After`). Corpo `{"error": <código>, "message": <texto>}`.
 - `GET /health` → `{"status", "fleet_adapter", "fleet_backend_reachable", "planner", "llm_enabled"}`
 - Missões ficam em memória no MVP, com no máximo N missões retidas (as mais antigas são descartadas).
+
+### Encerramento garantido da missão (ticket 13)
+
+- **Garantia:** enquanto o processo do Fleet AI estiver ativo, toda falha tratada leva a missão a um status terminal (`completed`, `not_understood`, `incomplete`, `failed`; `rejected` vem das guardas), com `finished_at` preenchido e os passos já executados preservados.
+- **Mapeamento:** `ExecutorTimeout` → `incomplete`; `FleetBackendError` (inclusive falhas de transporte e respostas fora do contrato, ADR-0005) → `failed`; qualquer outra exceção da execução → `failed`; cancelamento da tarefa (`asyncio.CancelledError`) → `failed`, e o cancelamento é **repropagado**, não suprimido.
+- **`ExecutorTimeout` sem cancelamento automático** nesta etapa: o texto final diz explicitamente que a navegação não terminou no prazo e que **o robô pode continuar navegando**; não afirma chegada nem cancelamento. Cancelar ao estourar o tempo máximo da missão é do ticket 08.
+- **Passo que falhou:** quando uma ferramenta falha com `FleetBackendError` ou `ExecutorTimeout`, o passo é registrado com `is_error: true` e `result: {"error": "backend_unavailable" | "navigation_timeout", "message": <texto genérico>}` antes de a falha subir.
+- **Sem vazamento:** a resposta da missão nunca contém mensagens do backend, texto de exceção, rastros de pilha, URLs internas ou credenciais; o texto final é genérico ("o backend de frota está indisponível", "erro interno"). Os detalhes vão para um log estruturado com `mission_id`, tipo da falha e a mensagem diagnóstica.
+- **Limites da garantia:** não há recuperação depois de um reinício (as missões vivem em memória e se perdem), nem proteção contra uma operação que bloqueie indefinidamente sem lançar exceção. A espera de cada chamada HTTP é limitada pelo timeout do cliente do adaptador e a espera da navegação pelo timeout do Executor; o tempo máximo da missão como um todo é do ticket 08.
 
 ### Guardas (valores padrão, todos configuráveis)
 
@@ -198,6 +208,7 @@ Duas imagens, usuário não-root, healthcheck, limite de memória. No Compose lo
 - **Tabela de intenções:** casos instrução → (intenção, argumentos, idioma) ou `not_understood`, em português e inglês, verificados pela API de missões (plano observado nos passos). A tabela é o documento vivo do que o planejador entende.
 - **Seam de contrato:** uma suíte única, parametrizada por adaptador, roda pelo Executor contra o SimFleet (adaptador `sim`) e contra o fake do Fleet UI (adaptador `fleet_ui`). O fake emite as respostas **brutas** do `fleet-ui@a57a3b1` (HTTP 200 com texto do `ros2 service call`, 403 do backend, 422 do FastAPI, navegação assíncrona e o `NAV2_ABORTED` após cancelamento); a suíte espera o contrato normalizado nos dois.
 - **Seam do SimFleet:** a própria API HTTP do SimFleet, para navegação, recusas, códigos de erro, log estruturado e determinismo.
+- **Encerramento garantido:** cenários de falha (backend fora do ar, respostas inválidas, prazo do Executor, exceção inesperada, cancelamento da tarefa) verificados pela API de missões e um invariante parametrizado: toda missão sai de `running` com `finished_at`. O cancelamento da tarefa é testado executando a missão numa tarefa `asyncio` e cancelando-a (ticket 13).
 - **Garantia de custo zero:** um teste verifica que a suíte inteira e o serviço sobem sem nenhuma variável de chave de API e que nenhuma dependência de SDK de LLM pago está declarada.
 - **Fora da suíte:** checklist manual contra o Fleet UI real.
 - **Referências no `fleet-ui`:** testes do Planner com cliente falso, do Executor via transporte ASGI em memória, e dos endpoints de agente e de frota.
@@ -217,6 +228,8 @@ Duas imagens, usuário não-root, healthcheck, limite de memória. No Compose lo
 - Qualquer alteração no repositório `fleet-ui`.
 
 ## Further Notes
+
+- O timeout do Executor (padrão 120 s) é maior que o tempo máximo da missão (60 s, tabela de guardas). No ticket 08, a espera do Executor passa a respeitar o tempo restante da missão.
 
 - A demo pública deve dizer que o planejamento é determinístico (por regras) e que a simulação é 2D cinemática, não Gazebo. Não chamar o planejador determinístico de "IA" na interface.
 - O planejador LLM existe na SPEC-001 só para manter o loop do `fleet-ui` portado, testado e pronto; ligá-lo com um modelo real exige a spec futura.

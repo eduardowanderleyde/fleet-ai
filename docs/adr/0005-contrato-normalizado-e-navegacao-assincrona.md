@@ -90,6 +90,24 @@ recusas 403 do backend HTTP. O `fleet-ui` continua sem alterações. O formato d
 | `NAV2_REJECTED` | destino inválido, em `last_error` | — | Fleet UI (orquestrador) |
 | `NAV2_ABORTED` | falha durante a execução, em `last_error` | — | Fleet UI (orquestrador) |
 
+**Fronteira de erro dos adaptadores** (decidida em 2026-10-27, com o ticket 13).
+Um adaptador só devolve uma recusa de comando quando a resposta é uma recusa
+**válida do contrato**: HTTP e `error_code` da tabela acima, no endpoint de
+comando certo (no Fleet UI, as formas brutas conhecidas: 403 de `_require_muut`,
+422 do FastAPI e o texto do `ros2 service call` com um código da tabela). Todo o
+resto vira `FleetBackendError`, uma falha do backend e não uma recusa:
+
+- falha de transporte (conexão recusada, DNS, timeout HTTP);
+- HTTP 5xx;
+- HTTP 4xx fora da tabela (por exemplo 400, 401, 404, 405), ou 4xx com corpo
+  malformado, `error_code` desconhecido ou incoerente com o status;
+- qualquer HTTP de erro nas consultas (`/api/status`, `/api/list_robots`);
+- corpo que não é JSON, ou JSON sem os campos do contrato;
+- código do orquestrador fora da tabela (por exemplo `NAV2_UNAVAILABLE`).
+
+A mensagem de um `FleetBackendError` é diagnóstica e vai para os logs; ela não
+chega à resposta da missão, que só diz que o backend de frota está indisponível.
+
 **SimFleet: decisões de simulação do MVP.**
 
 - O papel de cada robô é validado ao carregar o cenário: só `MUUT`, `FUUT` ou
@@ -136,6 +154,10 @@ recusas 403 do backend HTTP. O `fleet-ui` continua sem alterações. O formato d
   um cancelamento ocorreu sem o resultado `confirmed`.
 - No SimFleet o cancelamento aceito sempre leva a `idle`, então o resultado é
   `confirmed` sempre que o destino ativo veio do mesmo Executor.
+- Planejadores só recebem dois tipos de falha do Executor além das recusas:
+  `FleetBackendError` (backend indisponível ou fora do contrato) e
+  `ExecutorTimeout` (a navegação não terminou no prazo). A SPEC-001 define como
+  a missão termina em cada caso.
 - Os HTTP 409 de `ALREADY_NAVIGATING` e `CANCEL_FAILED` são do contrato
   normalizado; no Fleet UI essas recusas chegam com HTTP 200, e o adaptador
   normaliza.

@@ -1,8 +1,8 @@
-# 08: Escopo de robô e encerramento seguro da missão
+# 08: Escopo de robô e tempo máximo da missão
 
-**What to build:** Uma missão pode ser restrita a um robô (`robot_id` no pedido). O despachante reescreve à força o `robot_id` de todo comando, qualquer que seja o planejador. Missões que estouram o tempo máximo terminam `incomplete` e cancelam a navegação em curso; falhas do backend de frota terminam a missão em `failed` sem derrubar o serviço.
+**What to build:** Uma missão pode ser restrita a um robô (`robot_id` no pedido). O despachante reescreve à força o `robot_id` de todo comando, qualquer que seja o planejador. Missões que estouram o tempo máximo terminam `incomplete` e cancelam a navegação em curso, e a espera do Executor respeita o tempo que resta da missão. O encerramento garantido e as falhas do backend são do ticket 13.
 
-**Blocked by:** 06
+**Blocked by:** 06, 13
 
 **Status:** ready-for-agent
 
@@ -10,7 +10,8 @@
 - [ ] `list_robots` continua listando a frota numa missão com escopo (só leitura)
 - [ ] O escopo é aplicado no despachante, então vale para qualquer planejador (verificado no ticket 10 também)
 - [ ] Tempo máximo de missão estourado → `incomplete`, e a navegação em curso é cancelada com verificação no backend; o texto final relata o resultado do cancelamento (`confirmed`, `ambiguous` ou `not_confirmed`) sem afirmar mais do que ele (teste `test_mission_timeout_cancels_navigation_and_reports_the_outcome`)
-- [ ] Backend de frota indisponível → missão `failed` com mensagem; outras missões e o serviço seguem funcionando
+- [ ] A espera do Executor dentro de uma missão usa o menor entre o timeout do Executor e o tempo que resta da missão (padrões 120 s e 60 s), de modo que a missão nunca espere além do seu tempo máximo (teste `test_executor_wait_respects_the_remaining_mission_time`)
+- Movido para o ticket 13: "Backend de frota indisponível → missão `failed` com mensagem; outras missões e o serviço seguem funcionando"
 
 ## Comments
 

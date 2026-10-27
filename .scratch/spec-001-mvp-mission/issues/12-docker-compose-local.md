@@ -2,7 +2,7 @@
 
 **What to build:** Fleet AI e SimFleet sobem juntos com Docker Compose na máquina local, do jeito que vão rodar na VPS: imagens próprias, usuário não-root, healthchecks, limite de memória, SimFleet só na rede interna e Fleet AI publicado apenas em `127.0.0.1`. Uma missão com o planejador determinístico funciona dentro do Compose, sem nenhuma chave de API. Não há deploy.
 
-**Blocked by:** 07, 08, 09, 11
+**Blocked by:** 07, 08, 09, 11, 13
 
 **Status:** ready-for-agent
 

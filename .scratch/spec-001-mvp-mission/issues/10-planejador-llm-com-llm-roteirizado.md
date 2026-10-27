@@ -2,7 +2,7 @@
 
 **What to build:** O loop de tool use do `fleet-ui` é portado como segunda implementação da porta de planejador, dependendo de uma porta de LLM. A única implementação de LLM é o roteirizado. O planejador LLM só roda com configuração explícita; por padrão o serviço usa o determinístico. Assim o caminho agêntico fica testado e pronto para uma integração futura com modelos reais, sem nenhum custo agora.
 
-**Blocked by:** 08
+**Blocked by:** 08, 13
 
 **Status:** ready-for-agent
 
