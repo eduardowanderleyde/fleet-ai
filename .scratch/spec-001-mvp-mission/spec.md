@@ -188,6 +188,7 @@ Mesmos caminhos e parâmetros do `fleet-ui@a57a3b1`. Consultas sem mudança de f
 | Missões por IP | 10 por minuto, 100 por dia |
 | Missões simultâneas, global | 4 |
 | Tempo máximo de uma missão | 60 s |
+| Prazo para confirmar o cancelamento depois do tempo máximo | 5 s |
 | Missões retidas em memória | 500 |
 | Turnos do planejador LLM por missão | 8 |
 
@@ -230,7 +231,7 @@ Duas imagens, usuário não-root, healthcheck, limite de memória. No Compose lo
 
 ## Further Notes
 
-- O timeout do Executor (padrão 120 s) é maior que o tempo máximo da missão (60 s, tabela de guardas). No ticket 08, a espera do Executor passa a respeitar o tempo restante da missão.
+- O timeout do Executor (padrão 120 s) é maior que o tempo máximo da missão (60 s, tabela de guardas). Resolvido no ticket 08: a missão inteira roda sob o tempo máximo, então nenhuma espera do Executor passa dele; ao estourar, a navegação em curso enviada pela missão é cancelada com verificação (prazo de 5 s para confirmar) e a missão termina `incomplete`, com o texto relatando só o resultado do cancelamento. Se o prazo do Executor for menor que o tempo restante, vale o `ExecutorTimeout` (ticket 13, sem cancelamento).
 
 - A demo pública deve dizer que o planejamento é determinístico (por regras) e que a simulação é 2D cinemática, não Gazebo. Não chamar o planejador determinístico de "IA" na interface.
 - O planejador LLM existe na SPEC-001 só para manter o loop do `fleet-ui` portado, testado e pronto; ligá-lo com um modelo real exige a spec futura.

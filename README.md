@@ -10,13 +10,15 @@ por regras; não há LLM pago nem agente autônomo consumindo tokens. A integra�
 com modelos reais é uma funcionalidade futura, opcional e desligada por padrão
 ([ADR-0004](docs/adr/0004-planejador-deterministico-e-llm-opcional.md)).
 
-> **Status: em implementação.** SPEC-001 (MVP), tickets 01 a 07 e 13 concluídos:
+> **Status: em implementação.** SPEC-001 (MVP), tickets 01 a 08 e 13 concluídos:
 > `POST /v1/missions` aceita uma instrução como "leve o tb1 até a doca de carga",
 > o planejador determinístico a executa no SimFleet e `GET /v1/missions/{id}`
 > mostra passos e texto final. Toda missão termina (`completed`, `failed`,
 > `incomplete` ou `not_understood`), mesmo com o backend fora do ar. O planejador
 > entende, em português e inglês, listar robôs, estado de um robô, mover até um
-> lugar ou coordenada e cancelar. Escopo de robô e guardas vêm a seguir.
+> lugar ou coordenada e cancelar. Uma missão pode ser restrita a um robô e tem
+> tempo máximo, com cancelamento verificado da navegação. Guardas de entrada vêm
+> a seguir.
 
 ## Origem
 

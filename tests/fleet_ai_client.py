@@ -59,6 +59,8 @@ async def mission_stack(
     fake_fleet_ui: FakeFleetUiOptions | None = None,
     executor_timeout: float = 120.0,
     planner: Planner | None = None,
+    mission_timeout: float = 60.0,
+    cancel_grace: float = 5.0,
 ) -> AsyncIterator[Stack]:
     if fake_fleet_ui is not None:
         backend: httpx2.AsyncBaseTransport = httpx2.ASGITransport(
@@ -73,7 +75,14 @@ async def mission_stack(
         else SimAdapter(FLEET_URL, transport=fleet_transport)
     )
     executor = Executor(adapter, poll_interval=0.0, timeout=executor_timeout)
-    api = httpx2.ASGITransport(app=create_fleet_ai(executor=executor, planner=planner))
+    api = httpx2.ASGITransport(
+        app=create_fleet_ai(
+            executor=executor,
+            planner=planner,
+            mission_timeout=mission_timeout,
+            cancel_grace=cancel_grace,
+        )
+    )
     async with (
         httpx2.AsyncClient(base_url="http://fleet-ai", transport=api) as api_client,
         httpx2.AsyncClient(base_url=FLEET_URL, transport=backend) as fleet_client,

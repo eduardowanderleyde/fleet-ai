@@ -98,6 +98,16 @@ class DeterministicPlanner:
     async def run(
         self, instruction: str, robot_id: str | None, dispatcher: Dispatcher
     ) -> PlanOutcome:
+        outcome = await self._plan(instruction, robot_id, dispatcher)
+        if robot_id is None:
+            return outcome
+        # O despachante já força o robô; o texto deixa o escopo explícito.
+        scope = _SCOPE_TEXT[outcome.language].format(robot=robot_id)
+        return PlanOutcome(outcome.status, outcome.language, f"{scope} {outcome.final_text}")
+
+    async def _plan(
+        self, instruction: str, robot_id: str | None, dispatcher: Dispatcher
+    ) -> PlanOutcome:
         text = normalize(instruction)
         language = detect_language(instruction)
         places = _find_all(text, self._places)
@@ -105,7 +115,7 @@ class DeterministicPlanner:
         intents = _intents(text)
         if _SEQUENCE.search(text) or len(intents) > 1 or len(places) + bool(coordinate) > 1:
             return self._not_understood("multiple_actions", language)
-        robot = _find(text, self._robots)
+        robot = robot_id or _find(text, self._robots)
         if robot is None and _ROBOT_LIKE.search(text):
             return self._not_understood("unknown_robot", language)
         if intents == {"list"}:
@@ -126,6 +136,11 @@ class DeterministicPlanner:
         text = _NOT_UNDERSTOOD[reason][language].format(names=names.get(reason, ""))
         return PlanOutcome("not_understood", language, text)
 
+
+_SCOPE_TEXT: dict[Language, str] = {
+    "pt": "Missão restrita ao {robot}.",
+    "en": "Mission restricted to {robot}.",
+}
 
 # Conectores de sequência: duas ações na mesma instrução (só uma por missão).
 _SEQUENCE = re.compile(r"\b(?:e depois|depois|em seguida|e entao|then|and then|after that)\b")
@@ -221,17 +236,25 @@ _CANCEL_TEXTS: dict[str, dict[Language, str]] = {
         "pt": "Não havia navegação ativa do {robot} para cancelar.",
         "en": "There was no active navigation of {robot} to cancel.",
     },
+    "backend_unavailable": {
+        "pt": "Não foi possível cancelar a navegação do {robot}; ele pode continuar navegando.",
+        "en": "The navigation of {robot} could not be cancelled; it may still be navigating.",
+    },
 }
 
 
 async def _cancel(robot: str, language: Language, dispatcher: Dispatcher) -> PlanOutcome:
-    """Só o resultado `confirmed` permite dizer que a navegação foi cancelada (ADR-0005)."""
     result, refused = await dispatcher.call("cancel_navigation", {"robot_id": robot})
     key = result["error_code"] if refused else result["outcome"]
-    templates = _CANCEL_TEXTS.get(key)
+    return PlanOutcome("completed", language, cancel_text(robot, key, language))
+
+
+def cancel_text(robot: str, outcome: str, language: Language) -> str:
+    """Texto do resultado de um cancelamento; só `confirmed` diz que cancelou (ADR-0005)."""
+    templates = _CANCEL_TEXTS.get(outcome)
     if templates is None:
-        return PlanOutcome("completed", language, _refused(robot, key, language))
-    return PlanOutcome("completed", language, templates[language].format(robot=robot))
+        return _refused(robot, outcome, language)
+    return templates[language].format(robot=robot)
 
 
 _STATUS_PHRASES = (

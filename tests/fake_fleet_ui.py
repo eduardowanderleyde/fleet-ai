@@ -17,6 +17,7 @@ O movimento é trivial: o robô chega ao destino depois de `arrive_after_reads`
 leituras de status. Destinos fora de `bounds` falham com NAV2_REJECTED.
 """
 
+import asyncio
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -55,6 +56,10 @@ class FakeFleetUiOptions:
     robots: list[FakeRobot] = field(default_factory=list)
     # Quantos POST /api/cancel o fake recebeu (para testes que exigem nenhum cancel).
     cancel_requests: int = 0
+    # Só o `ros2 service call` do cancel falha (timeout do CLI).
+    cancel_service_fails: bool = False
+    # Segundos que o POST /api/cancel demora para responder (backend lento).
+    cancel_delay: float = 0.0
 
 
 def create_fake_fleet_ui(options: FakeFleetUiOptions) -> FastAPI:
@@ -154,8 +159,12 @@ def create_fake_fleet_ui(options: FakeFleetUiOptions) -> FastAPI:
         return ros_call("GoToPoint", request, response)
 
     @app.post("/api/cancel")
-    def cancel(robot_id: str = "") -> dict[str, Any]:
+    async def cancel(robot_id: str = "") -> dict[str, Any]:
         options.cancel_requests += 1
+        if options.cancel_delay:
+            await asyncio.sleep(options.cancel_delay)
+        if options.cancel_service_fails:
+            return {"success": False, "message": "timeout"}
         request = f"robot_id={robot_id!r}"
         robot = robots.get(robot_id)
         if robot is None:

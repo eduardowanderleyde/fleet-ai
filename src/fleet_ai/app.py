@@ -8,7 +8,12 @@ from pydantic import BaseModel
 
 from fleet_ai.adapters import SimAdapter
 from fleet_ai.executor import Executor
-from fleet_ai.missions import Mission, _execute_mission
+from fleet_ai.missions import (
+    DEFAULT_CANCEL_GRACE,
+    DEFAULT_MISSION_TIMEOUT,
+    Mission,
+    _execute_mission,
+)
 from fleet_ai.planning import DeterministicPlanner, Planner
 from fleet_ai.scenario import load_names
 
@@ -18,7 +23,13 @@ class MissionRequest(BaseModel):
     robot_id: str | None = None
 
 
-def create_app(executor: Executor | None = None, planner: Planner | None = None) -> FastAPI:
+def create_app(
+    executor: Executor | None = None,
+    planner: Planner | None = None,
+    *,
+    mission_timeout: float = DEFAULT_MISSION_TIMEOUT,
+    cancel_grace: float = DEFAULT_CANCEL_GRACE,
+) -> FastAPI:
     """Sem `executor`, fala com o SimFleet em FLEET_AI_FLEET_URL (padrão localhost:8001).
 
     Sem `planner`, usa o planejador determinístico com os nomes do cenário.
@@ -44,7 +55,9 @@ def create_app(executor: Executor | None = None, planner: Planner | None = None)
         return {"mission_id": mission.mission_id, "status": mission.status}
 
     async def run_mission(mission: Mission) -> None:
-        await _execute_mission(mission, active_planner, fleet)
+        await _execute_mission(
+            mission, active_planner, fleet, timeout=mission_timeout, cancel_grace=cancel_grace
+        )
 
     @app.get("/v1/missions/{mission_id}", response_model=None)
     async def get_mission(mission_id: str) -> dict[str, object] | JSONResponse:

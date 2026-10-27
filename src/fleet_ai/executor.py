@@ -49,7 +49,9 @@ class Executor:
             raise CommandRefused(response.error_code, response.message)
         self._sent.add(robot_id)
 
-    async def cancel_navigation(self, robot_id: str) -> CancelOutcome:
+    async def cancel_navigation(
+        self, robot_id: str, *, timeout: float | None = None
+    ) -> CancelOutcome:
         """Cancela e verifica: `confirmed` só com as três evidências do ADR-0005.
 
         (1) este Executor enviou o destino ativo e viu o robô em `navigating`;
@@ -62,20 +64,26 @@ class Executor:
             raise CommandRefused(response.error_code, response.message)
         self._sent.discard(robot_id)
         try:
-            after = await self.wait_for_navigation(robot_id)
+            after = await self.wait_for_navigation(robot_id, timeout=timeout)
         except ExecutorTimeout:
             return "not_confirmed"
         return "confirmed" if own and after.nav_state == "idle" else "ambiguous"
 
-    async def wait_for_navigation(self, robot_id: str) -> RobotStatus:
-        """Consulta o status até o robô sair de `navigating` e devolve o estado final."""
-        deadline = time.monotonic() + self._timeout
+    async def wait_for_navigation(
+        self, robot_id: str, *, timeout: float | None = None
+    ) -> RobotStatus:
+        """Consulta o status até o robô sair de `navigating` e devolve o estado final.
+
+        `timeout` substitui o prazo do Executor nesta espera.
+        """
+        limit = self._timeout if timeout is None else timeout
+        deadline = time.monotonic() + limit
         while True:
             status = await self.robot_status(robot_id)
             if status.nav_state != "navigating":
                 return status
             if time.monotonic() > deadline:
-                raise ExecutorTimeout(f"{robot_id} still navigating after {self._timeout} s")
+                raise ExecutorTimeout(f"{robot_id} still navigating after {limit} s")
             await asyncio.sleep(self._poll_interval)
 
 
