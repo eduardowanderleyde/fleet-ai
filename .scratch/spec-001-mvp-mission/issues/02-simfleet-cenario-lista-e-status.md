@@ -4,12 +4,12 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] `GET /api/list_robots` devolve `{"robot_ids": [...]}` com os robôs do cenário, na ordem do cenário
-- [ ] `GET /api/status` devolve `robots` (com `robot_id`, `role`, `nav_state`, `current_route`, `collection_on`, `collection_file`, `last_error`, `bytes_written`), `pose` (do primeiro robô) e `poses` por robô com `x`, `y`, `yaw`, `valid: true`
-- [ ] Todo robô começa em `nav_state: "idle"` na pose inicial do cenário
-- [ ] Apelidos de robôs e lugares nomeados (nome, sinônimos PT/EN, x, y, yaw) são lidos do cenário, mas não aparecem nas respostas do contrato
-- [ ] O mapa e os parâmetros do warehouse vêm do `fleet-ui`, com a origem (arquivo e commit) registrada
-- [ ] Cenário inválido (imagem ausente, robô ou lugar em célula ocupada, id ou nome duplicado, apelido igual entre dois robôs) impede o serviço de subir, com mensagem clara
-- [ ] O cenário é escolhido por configuração; os testes usam um cenário pequeno próprio, além do warehouse
+- [x] `GET /api/list_robots` devolve `{"robot_ids": [...]}` com os robôs do cenário, na ordem do cenário
+- [x] `GET /api/status` devolve `robots` (com `robot_id`, `role`, `nav_state`, `current_route`, `collection_on`, `collection_file`, `last_error`, `bytes_written`), `pose` (do primeiro robô) e `poses` por robô com `x`, `y`, `yaw`, `valid: true`
+- [x] Todo robô começa em `nav_state: "idle"` na pose inicial do cenário
+- [x] Apelidos de robôs e lugares nomeados (nome, sinônimos PT/EN, x, y, yaw) são lidos do cenário, mas não aparecem nas respostas do contrato
+- [x] O mapa e os parâmetros do warehouse vêm do `fleet-ui`, com a origem (arquivo e commit) registrada
+- [x] Cenário inválido (imagem ausente, robô ou lugar em célula ocupada, id ou nome duplicado, apelido igual entre dois robôs) impede o serviço de subir, com mensagem clara
+- [x] O cenário é escolhido por configuração; os testes usam um cenário pequeno próprio, além do warehouse

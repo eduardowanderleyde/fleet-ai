@@ -9,3 +9,9 @@ def without_api_keys(monkeypatch: pytest.MonkeyPatch) -> None:
     for name in list(os.environ):
         if name.endswith("_API_KEY"):
             monkeypatch.delenv(name)
+
+
+@pytest.fixture(autouse=True)
+def without_scenario_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Um SIMFLEET_SCENARIO do shell não pode trocar o cenário padrão dos testes."""
+    monkeypatch.delenv("SIMFLEET_SCENARIO", raising=False)

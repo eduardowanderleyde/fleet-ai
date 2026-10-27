@@ -10,8 +10,9 @@ por regras; não há LLM pago nem agente autônomo consumindo tokens. A integra�
 com modelos reais é uma funcionalidade futura, opcional e desligada por padrão
 ([ADR-0004](docs/adr/0004-planejador-deterministico-e-llm-opcional.md)).
 
-> **Status: em implementação.** SPEC-001 (MVP), ticket 01 de 12 concluído: os
-> dois serviços sobem e respondem `/health`; ainda não há funcionalidade.
+> **Status: em implementação.** SPEC-001 (MVP), tickets 01 e 02 de 12 concluídos:
+> os dois serviços sobem e o SimFleet já responde lista de robôs e status do
+> cenário warehouse. Ainda não há movimento nem missões.
 
 ## Origem
 
@@ -94,6 +95,12 @@ Subir os serviços localmente:
 uv run uvicorn fleet_ai.app:create_app --factory --port 8000
 uv run uvicorn simfleet.app:create_app --factory --port 8001
 ```
+
+O SimFleet carrega o cenário indicado em `SIMFLEET_SCENARIO` (um arquivo
+`scenario.toml`) ou, sem ela, o warehouse do Fleet UI, com tb1 e tb2 móveis
+(MUUT), tb3 fixo (FUUT) e lugares nomeados como "doca de carga" e "corredor
+central". Cenário inválido (mapa ausente, robô ou lugar em obstáculo, nome
+repetido) impede o serviço de subir.
 
 A suíte remove do ambiente qualquer variável `*_API_KEY` e falha se algum SDK de
 LLM pago aparecer no `uv.lock`, inclusive como dependência indireta.

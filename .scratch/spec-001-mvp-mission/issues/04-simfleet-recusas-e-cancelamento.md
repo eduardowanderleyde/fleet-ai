@@ -12,3 +12,7 @@
 - [ ] Um `go_to_point` válido depois de `failed` volta a funcionar
 - [ ] `cancel` durante a navegação → `success: true`, robô em `idle` na pose em que estava; poses seguintes não mudam
 - [ ] `cancel` com o robô parado → `success: true`, sem efeito colateral
+
+## Comments
+
+- 2026-10-26 (ticket 02): o papel do robô ainda é texto livre no cenário (`"MUTT"` carregaria sem erro). Ao implementar a recusa por papel, decidir se o cenário passa a validar `MUUT`/`FUUT`/`SU`; no Fleet UI, papel desconhecido apenas não se move.

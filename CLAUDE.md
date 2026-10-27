@@ -23,8 +23,10 @@ independente dele: os dois só conversam pelo **contrato de frota** HTTP. Ver
 - O Claude Code é ferramenta de desenvolvimento, não parte do produto.
 - Segredos, quando existirem, só por variável de ambiente; nunca no
   repositório.
-- Documentação em português; código, identificadores e mensagens de API em
-  inglês.
+- Documentação, docstrings, comentários e mensagens de erro de inicialização em
+  português; código, identificadores e mensagens da API do Fleet AI em inglês.
+  Exceção: as respostas do contrato de frota (SimFleet) reproduzem literalmente
+  as do Fleet UI, que são em português (ADR-0002).
 
 ## Agent skills
 

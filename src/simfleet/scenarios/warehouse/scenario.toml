@@ -1,0 +1,80 @@
+# Warehouse do nav2_minimal_tb4_sim, o mundo usado nos experimentos do Fleet UI.
+#
+# Mapa e parâmetros: fleet-ui, ver SOURCE.md. Coordenadas em metros no frame do
+# mundo. Robôs nas DEFAULT_POSES do launch multi-robô; tb3 é FUUT (não se move).
+# Lugares conferidos contra o mapa: livres depois de inflar os obstáculos.
+
+name = "warehouse"
+
+[map]
+image = "warehouse_map.png"
+resolution = 0.03
+origin = [-15.1, -25.0]
+inflate_m = 0.25
+
+[[robots]]
+id = "tb1"
+role = "MUUT"
+start = [0.0, 0.0, 0.0]
+aliases = ["robô 1", "robot 1", "robot one"]
+
+[[robots]]
+id = "tb2"
+role = "MUUT"
+start = [0.0, 2.0, 0.0]
+aliases = ["robô 2", "robot 2", "robot two"]
+
+[[robots]]
+id = "tb3"
+role = "FUUT"
+start = [0.0, 4.0, 0.0]
+aliases = ["robô 3", "robot 3", "robot three"]
+
+[[places]]
+name = "base"
+synonyms = ["home", "base station"]
+x = 0.0
+y = 1.0
+yaw = 0.0
+
+[[places]]
+name = "doca de carga"
+synonyms = ["doca", "doca norte", "loading dock", "dock"]
+x = 2.0
+y = 13.5
+yaw = 0.0
+
+[[places]]
+name = "corredor oeste"
+synonyms = ["corredor sul oeste", "west aisle"]
+x = -5.5
+y = -12.0
+yaw = 0.0
+
+[[places]]
+name = "corredor central"
+synonyms = ["corredor sul central", "central aisle", "middle aisle"]
+x = 2.0
+y = -12.0
+yaw = 0.0
+
+[[places]]
+name = "corredor leste"
+synonyms = ["corredor sul leste", "east aisle"]
+x = 10.0
+y = -9.0
+yaw = 0.0
+
+[[places]]
+name = "corredor da parede oeste"
+synonyms = ["parede oeste", "west wall aisle"]
+x = -12.5
+y = -10.0
+yaw = 0.0
+
+[[places]]
+name = "sala noroeste"
+synonyms = ["northwest room"]
+x = -13.0
+y = 12.0
+yaw = 0.0
