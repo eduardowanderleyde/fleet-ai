@@ -4,10 +4,10 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Projeto Python 3.12 com dependências declaradas e travadas, num ambiente virtual do projeto (nada instalado no sistema)
-- [ ] `GET /health` do Fleet AI e do SimFleet respondem 200 com `{"status": "ok"}`, verificados por teste HTTP em processo (sem abrir porta)
-- [ ] Um comando documentado roda testes, lint e checagem de tipos; os três passam
-- [ ] Teste de custo zero: nenhuma dependência declarada é SDK de LLM pago (lista de nomes proibidos mantida no próprio teste) e a suíte roda com o ambiente sem nenhuma variável `*_API_KEY`
-- [ ] README atualizado com o comando de testes
+- [x] Projeto Python 3.12 com dependências declaradas e travadas, num ambiente virtual do projeto (nada instalado no sistema)
+- [x] `GET /health` do Fleet AI e do SimFleet respondem 200 com `{"status": "ok"}`, verificados por teste HTTP em processo (sem abrir porta)
+- [x] Um comando documentado roda testes, lint e checagem de tipos; os três passam
+- [x] Teste de custo zero: nenhuma dependência declarada é SDK de LLM pago (lista de nomes proibidos mantida no próprio teste) e a suíte roda com o ambiente sem nenhuma variável `*_API_KEY`
+- [x] README atualizado com o comando de testes

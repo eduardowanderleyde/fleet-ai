@@ -10,8 +10,8 @@ por regras; não há LLM pago nem agente autônomo consumindo tokens. A integra�
 com modelos reais é uma funcionalidade futura, opcional e desligada por padrão
 ([ADR-0004](docs/adr/0004-planejador-deterministico-e-llm-opcional.md)).
 
-> **Status: especificação.** Ainda não há código. A SPEC-001 (MVP) e seus 12
-> tickets estão aprovados; a implementação começa pelo ticket 01.
+> **Status: em implementação.** SPEC-001 (MVP), ticket 01 de 12 concluído: os
+> dois serviços sobem e respondem `/health`; ainda não há funcionalidade.
 
 ## Origem
 
@@ -76,6 +76,27 @@ um reconhecedor de intenções por regras.
 | SPEC-003 | Streaming dos passos e interface web | Planejada |
 | SPEC-004 | Servidor MCP com as mesmas ferramentas | Planejada |
 | Futura | Integração opcional com modelos reais, com orçamento de tokens e custo, desligada por padrão | Opcional |
+
+## Desenvolvimento
+
+Requer apenas o [uv](https://docs.astral.sh/uv/); ele baixa o Python 3.12 e
+instala as dependências travadas em `uv.lock` num ambiente virtual do projeto
+(`.venv/`). Nenhuma chave de API é necessária.
+
+```bash
+uv sync                 # cria o ambiente
+./scripts/check.sh      # lint, formatação, tipos e testes; tudo precisa passar
+```
+
+Subir os serviços localmente:
+
+```bash
+uv run uvicorn fleet_ai.app:create_app --factory --port 8000
+uv run uvicorn simfleet.app:create_app --factory --port 8001
+```
+
+A suíte remove do ambiente qualquer variável `*_API_KEY` e falha se algum SDK de
+LLM pago aparecer no `uv.lock`, inclusive como dependência indireta.
 
 ## Como o trabalho é organizado
 

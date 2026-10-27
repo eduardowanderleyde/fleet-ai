@@ -12,3 +12,7 @@
 - [ ] Respostas HTTP ≥ 400 viram erro do Executor com a mensagem do backend (ex.: a recusa 403 de papel)
 - [ ] A mesma suíte de contrato passa contra o SimFleet e contra o fake do Fleet UI: listar, status, mover até chegar, robô inexistente, papel sem movimento, destino inválido, cancelar
 - [ ] O fake do Fleet UI documenta de quais endpoints e commit da referência os formatos foram tirados
+
+## Comments
+
+- 2026-10-26 (ticket 01): a suíte usa `httpx2` (o Starlette 1.10 depreciou `httpx` no `TestClient`) e `httpx` não está instalado. Portar o Executor já sobre `httpx2.AsyncClient`; o `ASGITransport` existe no `httpx2` 2.16.
