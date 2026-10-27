@@ -1,9 +1,9 @@
 # SPEC-001: MVP — missão em linguagem natural contra o SimFleet, sem LLM pago
 
 **Status:** ready-for-agent
-**Aprovada em:** 2026-10-26 (revisada no mesmo dia: sem APIs pagas, ver ADR-0004)
+**Aprovada em:** 2026-10-26 (revisada no mesmo dia: sem APIs pagas, ADR-0004; contrato normalizado e navegação assíncrona, ADR-0005)
 **Referência de código:** `fleet-ui@a57a3b1` (ver ADR-0001)
-**Decisões relacionadas:** ADR-0001, ADR-0002, ADR-0003, ADR-0004
+**Decisões relacionadas:** ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005
 
 ## Problem Statement
 
@@ -45,6 +45,7 @@ O sistema inteiro sobe e passa nos testes **sem nenhuma chave de API**.
 8. Como visitante, quero um texto final resumindo o que foi feito, com a pose final do robô quando houver movimento.
 9. Como visitante, quero que uma instrução fora das intenções suportadas termine como `not_understood` com exemplos do que posso pedir, em vez de um erro genérico.
 10. Como visitante, quero que pedir um robô inexistente, um lugar desconhecido ou um destino dentro de uma parede gere uma explicação clara.
+10a. Como visitante, quero que mandar um robô que já está navegando para outro destino seja recusado com a sugestão de cancelar antes, para não perder o controle do que ele está fazendo.
 11. Como visitante, quero que pedir movimento a um robô de papel FUUT ou SU seja recusado com o motivo, como no Fleet UI.
 12. Como visitante, quero referir-me aos robôs pelo id ("tb1") ou por apelidos do cenário ("robô 1", "robot one"), e aos lugares por nome ou sinônimo, sem me preocupar com maiúsculas ou acentos.
 13. Como dono, quero que a demo funcione sem nenhuma chave de API e sem nenhuma dependência de SDK de LLM pago, para ter custo zero de modelo.
@@ -59,7 +60,8 @@ O sistema inteiro sobe e passa nos testes **sem nenhuma chave de API**.
 22. Como desenvolvedor, quero testar as intenções do planejador determinístico com uma tabela de casos (instrução → plano esperado) em português e inglês.
 23. Como desenvolvedor, quero testar o loop do planejador LLM de ponta a ponta com o LLM roteirizado, sem rede e sem custo, para que a integração futura com um modelo real seja só um novo adaptador.
 24. Como desenvolvedor, quero que os dois planejadores usem as mesmas ferramentas, o mesmo escopo de robô e o mesmo registro de passos, para que a missão tenha o mesmo formato independentemente do planejador.
-25. Como desenvolvedor, quero uma suíte de testes de contrato que rode contra o SimFleet e contra o fake do Fleet UI.
+25. Como desenvolvedor, quero uma suíte de testes de contrato que rode contra o SimFleet e contra o fake do Fleet UI, este emitindo as respostas brutas reais do Fleet UI, para provar que o adaptador `fleet_ui` as normaliza.
+25a. Como operador, quero a causa detalhada de cada navegação falhada (destino ocupado, fora do mapa, sem caminho) num log estruturado do SimFleet, já que o contrato só carrega o código de erro.
 26. Como desenvolvedor, quero que, no planejador LLM, o limite de turnos termine a missão como `incomplete` com os passos preservados.
 27. Como operador, quero endpoints de health nos dois serviços, informando o adaptador de frota, se o backend responde e o planejador ativo.
 28. Como operador, quero subir Fleet AI e SimFleet localmente com Docker Compose, com o SimFleet sem porta publicada.
@@ -71,7 +73,7 @@ O sistema inteiro sobe e passa nos testes **sem nenhuma chave de API**.
 
 - **Serviço Fleet AI (FastAPI):** API pública de missões, executor de missões, planejadores, ferramentas, Executor, guardas e configuração.
 - **Serviço SimFleet (FastAPI):** implementa o contrato de frota sobre um cenário. Processo e imagem próprios.
-- **Executor:** portado do `fleet-ui`, com a correção de pose por robô, mais a operação composta de aguardar chegada (polling do status com intervalo e timeout configuráveis).
+- **Executor e adaptadores de frota:** o Executor é portado do `fleet-ui`, com a correção de pose por robô, mais duas operações compostas: aguardar o fim da navegação e cancelar com confirmação (ambas por polling do status, com intervalo e timeout configuráveis). Ele fala o contrato normalizado. O adaptador `sim` repassa as respostas do SimFleet; o adaptador `fleet_ui` é o **único** lugar que traduz as respostas brutas do Fleet UI para o contrato (ADR-0005). Falhas de comando chegam aos planejadores como erro com `error_code`.
 - **Ferramentas e despachante:** um único despachante recebe `(nome da ferramenta, entrada)`, aplica o escopo de robô, chama o Executor e devolve o resultado ou o erro. Os dois planejadores usam o mesmo despachante.
 - **Porta de planejador:** recebe a instrução, o escopo de robô opcional e o despachante; devolve status, passos e texto final. Duas implementações:
   - **Planejador determinístico** (padrão): normaliza o texto, reconhece uma intenção e seus argumentos por regras, monta um plano fixo de chamadas e o executa pelo despachante.
@@ -95,7 +97,9 @@ O sistema inteiro sobe e passa nos testes **sem nenhuma chave de API**.
 - **Referências:** robôs pelo id ou por apelidos do cenário; lugares por nome ou sinônimos do cenário, em português e inglês. O yaw é opcional, em graus na instrução e radianos no contrato.
 - **Não entendido:** sem intenção reconhecida, robô ausente quando a intenção exige um, ou mais de uma intenção na mesma instrução → status `not_understood`, sem chamar nenhuma ferramenta, com 3 exemplos de instruções válidas no idioma detectado.
 - **Lugar ou robô desconhecido:** `not_understood` com a lista de nomes válidos do cenário.
-- **Falha de ferramenta** (papel sem movimento, destino inválido): o plano para no passo que falhou e a missão termina `completed` com o texto final explicando a falha (a missão foi entendida e executada até onde o backend permitiu).
+- **Falha de comando** (robô desconhecido, papel sem movimento, robô já navegando): o plano para no passo que falhou e a missão termina `completed` com o texto final explicando a falha pelo `error_code`; para `ALREADY_NAVIGATING`, o texto sugere cancelar antes ("pare o tb1"). O planejador nunca cancela sozinho para enviar outro destino.
+- **Falha de navegação** (destino inválido ou abortado): o `move_robot` é aceito e a falha aparece no resultado do `wait_for_arrival` (`nav_state: failed`, `last_error`); a missão termina `completed` com o texto final explicando a falha.
+- Em todos os casos a missão foi entendida e executada até onde o backend permitiu; por isso o status é `completed`, e o sucesso ou a falha da ação ficam no texto final e nos passos.
 - O planejador determinístico não faz chamadas de rede além do despachante e não tem aleatoriedade.
 
 ### Planejador LLM (desligado por padrão)
@@ -112,25 +116,43 @@ O sistema inteiro sobe e passa nos testes **sem nenhuma chave de API**.
 | `list_robots` | `GET /api/list_robots` |
 | `get_robot_status` | `GET /api/status` (filtra o robô; pose de `poses[robot_id]`) |
 | `move_robot` | `POST /api/go_to_point` |
-| `wait_for_arrival` | polling de `GET /api/status` até `nav_state` sair de `navigating` |
-| `cancel_navigation` | `POST /api/cancel` |
+| `wait_for_arrival` | polling de `GET /api/status` até o estado de navegação sair de `navigating`; devolve estado final, `last_error` e pose |
+| `cancel_navigation` | `POST /api/cancel` e, se aceito, polling até o estado sair de `navigating` (cancelamento confirmado) |
 
 As demais ferramentas do `fleet-ui` (gravação, replay, coleta, experimentos, campanhas, Analyst) não entram na SPEC-001.
 
-### Contrato de frota (subconjunto, igual ao `fleet-ui@a57a3b1`)
+### Contrato de frota (normalizado, ver ADR-0005)
+
+Mesmos caminhos e parâmetros do `fleet-ui@a57a3b1`. Consultas sem mudança de formato; comandos com resposta normalizada `{"success": bool, "message": str, "error_code": str}`. `message` é texto legível em inglês, só para pessoas; clientes decidem pelo `error_code`.
 
 - `GET /api/list_robots` → `{"robot_ids": [...]}`
 - `GET /api/status` → `{"robots": [{"robot_id", "role", "nav_state", "current_route", "collection_on", "collection_file", "last_error", "bytes_written"}], "pose": {...}, "poses": {robot_id: {"x", "y", "yaw", "valid"}}}`
-- `POST /api/go_to_point?robot_id&x&y&yaw` → `{"success": bool, "message": str}`. Papel diferente de MUUT → HTTP 403 com `{"success": false, "message": "<robot_id>: papel '<role>' não permite movimento"}`.
-- `POST /api/cancel?robot_id` → `{"success": bool, "message": str}`
-- `nav_state` usa os valores do Fleet UI: `idle`, `navigating`, `failed`.
-- Destino inalcançável no SimFleet (ocupado, fora do mapa, sem caminho) → HTTP 200 com `{"success": false, "message": ...}`; robô em `failed` com `last_error`.
+- `POST /api/go_to_point?robot_id&x&y&yaw` → aceito: `200 {"success": true, "message": "Navigation started", "error_code": ""}`.
+- `POST /api/cancel?robot_id` → aceito: `200 {"success": true, "message": "Cancel requested", "error_code": ""}`, e o robô passa a `idle` na pose em que estava.
+- Estado de navegação (`nav_state`): `idle`, `navigating`, `failed`. Na chegada: `idle` e `last_error` vazio.
+- **Navegação assíncrona:** um destino bem formado é sempre aceito; falhas de planejamento aparecem na leitura seguinte do status como `failed` com `last_error: NAV2_REJECTED`. `NAV2_ABORTED` fica para falhas durante a execução (o SimFleet do MVP não as produz).
+- **Cancelamento confirmado:** um novo destino só é aceito com o robô fora de `navigating`. Depois de um cancelamento próprio, `failed` / `NAV2_ABORTED` não conta como falha da missão, porque o Fleet UI pode produzi-lo ao concluir o cancelamento.
+
+| `error_code` | Quando | HTTP | Onde aparece |
+|---|---|---|---|
+| `INVALID_REQUEST` | `x`, `y` ou `yaw` ausente, não numérico, infinito ou NaN; `robot_id` ausente | 422 | resposta |
+| `UNKNOWN_ROBOT` | robô fora do cenário | 403 | resposta |
+| `ROLE_NOT_ALLOWED` | `go_to_point` para robô de papel diferente de MUUT | 403 | resposta |
+| `ALREADY_NAVIGATING` | `go_to_point` com o robô em `navigating` | 409 | resposta |
+| `CANCEL_FAILED` | `cancel` sem navegação ativa | 409 | resposta |
+| `NAV2_REJECTED` | destino ocupado ou próximo demais de obstáculo, fora do mapa, ou sem caminho | — | `last_error` |
+| `NAV2_ABORTED` | falha durante a execução | — | `last_error` |
+
+- **Tradução no adaptador `fleet_ui`** (único lugar com conhecimento do formato bruto): resposta HTTP 200 cujo `message` contém `success=False` e `error_code='X'` (texto do `ros2 service call`) → `success: false`, `error_code: X`; 403 do backend com "não declarado em roles.yaml" → `UNKNOWN_ROBOT`; 403 com "não permite movimento" → `ROLE_NOT_ALLOWED`; 422 do FastAPI → `INVALID_REQUEST`; texto sem `success=False` → `success: true`, `error_code` vazio.
+- **Log estruturado do SimFleet:** cada navegação falhada registra robô, destino, `error_code` e a causa detalhada (`target_occupied`, `target_out_of_map`, `no_path`). A causa não faz parte do contrato.
 - **Apelidos e lugares nomeados não fazem parte do contrato de frota**, porque o Fleet UI não os tem. Eles vêm da configuração do cenário que o Fleet AI lê (o mesmo arquivo usado pelo SimFleet, ou um equivalente ao usar o Fleet UI).
 
 ### SimFleet
 
 - **Cenário:** imagem do mapa de ocupação, resolução (m/pixel), origem, raio de inflação, robôs (id, papel, apelidos, pose inicial) e lugares nomeados (nome, sinônimos PT/EN, x, y, yaw). O cenário padrão é o warehouse do `fleet-ui` (imagem `warehouse_map.png` e parâmetros do cenário de alocação de `windows-version`), com dois robôs MUUT, um FUUT e ao menos 5 lugares nomeados.
-- **Navegação:** A* 8-conectado sobre a grade com obstáculos inflados; velocidade linear constante, yaw na direção do movimento; na chegada, assume o yaw pedido e volta a `idle`.
+- **Grade de planejamento:** células de `cell_m` (padrão 0,1 m, no cenário). Redução conservadora: a célula é bloqueada se qualquer pixel dela estiver bloqueado na grade inflada da resolução original. A célula de partida do robô é sempre considerada livre. O destino é válido se estiver livre na grade inflada original **e** na grade de planejamento.
+- **Caminho:** A* 8-conectado na grade de planejamento, sem cortar quinas, seguido de suavização por linha de visada; todo segmento do caminho final é validado contra a grade inflada da resolução original. O último ponto é exatamente o destino.
+- **Movimento (MVP, não é simulação física fiel):** velocidade linear constante (`speed_mps`, padrão 0,3 m/s, no cenário); yaw alinhado a cada segmento instantaneamente; na chegada, assume o yaw pedido e volta a `idle`.
 - **Relógio:** injetável. Em produção, relógio real com fator de escala configurável. Nos testes, relógio manual que avança um passo fixo a cada leitura de status, sem esperas reais.
 - **Determinismo:** sem aleatoriedade; mesmo cenário e mesmos comandos produzem as mesmas poses.
 - **Estado em memória:** reiniciar volta ao cenário inicial.
@@ -171,8 +193,8 @@ Duas imagens, usuário não-root, healthcheck, limite de memória. No Compose lo
 - **O que é um bom teste aqui:** exercita comportamento externo pela seam combinada e verifica resultados observáveis (status, passos, pose final, texto final, códigos HTTP). Não verifica chamadas internas nem estrutura de classes.
 - **Seam principal:** a API HTTP do Fleet AI, em processo, ligada a um SimFleet real em processo com relógio manual. Missões com o planejador determinístico e com o planejador LLM + LLM roteirizado passam pela mesma seam.
 - **Tabela de intenções:** casos instrução → (intenção, argumentos, idioma) ou `not_understood`, em português e inglês, verificados pela API de missões (plano observado nos passos). A tabela é o documento vivo do que o planejador entende.
-- **Seam de contrato:** uma suíte única, parametrizada por backend, roda pelo Executor contra o SimFleet e contra o fake do Fleet UI, que reproduz caminhos, parâmetros, formatos e erros do `fleet-ui@a57a3b1`.
-- **Seam do SimFleet:** a própria API HTTP do SimFleet, para navegação, recusas e determinismo.
+- **Seam de contrato:** uma suíte única, parametrizada por adaptador, roda pelo Executor contra o SimFleet (adaptador `sim`) e contra o fake do Fleet UI (adaptador `fleet_ui`). O fake emite as respostas **brutas** do `fleet-ui@a57a3b1` (HTTP 200 com texto do `ros2 service call`, 403 do backend, 422 do FastAPI, navegação assíncrona e o `NAV2_ABORTED` após cancelamento); a suíte espera o contrato normalizado nos dois.
+- **Seam do SimFleet:** a própria API HTTP do SimFleet, para navegação, recusas, códigos de erro, log estruturado e determinismo.
 - **Garantia de custo zero:** um teste verifica que a suíte inteira e o serviço sobem sem nenhuma variável de chave de API e que nenhuma dependência de SDK de LLM pago está declarada.
 - **Fora da suíte:** checklist manual contra o Fleet UI real.
 - **Referências no `fleet-ui`:** testes do Planner com cliente falso, do Executor via transporte ASGI em memória, e dos endpoints de agente e de frota.
@@ -188,7 +210,7 @@ Duas imagens, usuário não-root, healthcheck, limite de memória. No Compose lo
 - Gravação, replay, coleta de sensores, experimentos, campanhas e o Analyst.
 - Streaming de passos; interface web; integração com o portfólio.
 - Deploy na VPS, TLS, proxy reverso, Redis, captcha.
-- Física realista, colisão entre robôs e ruído no SimFleet.
+- Física realista (aceleração, tempo de giro, dinâmica), colisão entre robôs, obstáculos dinâmicos e ruído no SimFleet.
 - Qualquer alteração no repositório `fleet-ui`.
 
 ## Further Notes

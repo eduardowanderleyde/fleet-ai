@@ -25,8 +25,8 @@ independente dele: os dois só conversam pelo **contrato de frota** HTTP. Ver
   repositório.
 - Documentação, docstrings, comentários e mensagens de erro de inicialização em
   português; código, identificadores e mensagens da API do Fleet AI em inglês.
-  Exceção: as respostas do contrato de frota (SimFleet) reproduzem literalmente
-  as do Fleet UI, que são em português (ADR-0002).
+  Isso inclui o `message` do contrato de frota; clientes decidem pelo
+  `error_code`, nunca pelo texto (ADR-0005).
 
 ## Agent skills
 

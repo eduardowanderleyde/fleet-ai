@@ -11,5 +11,7 @@
 - [ ] Lugares nomeados e apelidos vêm da configuração do cenário lida pelo Fleet AI
 - [ ] `POST /v1/missions` → 202 com `mission_id` e `status: "running"`; `GET` de id desconhecido → 404
 - [ ] Teste de aceitação: "leve o tb1 até a doca de carga" termina `completed`, com 3 passos na ordem, `planner: "deterministic"`, `language: "pt"`, texto final em português com a pose final, e o tb1 a até 5 cm do lugar
-- [ ] Mover um robô FUUT: o plano para no `move_robot` com `is_error: true`, missão `completed` e texto final explicando que o papel não permite movimento
+- [ ] Mover um robô FUUT: o plano para no `move_robot` com `is_error: true` e `ROLE_NOT_ALLOWED`, missão `completed` e texto final explicando que o papel não permite movimento
+- [ ] Mover um robô que já está navegando: o plano para no `move_robot` com `ALREADY_NAVIGATING`; o texto final sugere cancelar antes; o planejador não cancela sozinho
+- [ ] Coordenada impossível (dentro de uma estante): `move_robot` aceito, `wait_for_arrival` devolve `failed` / `NAV2_REJECTED`, missão `completed` com texto final explicando que o destino não pôde ser alcançado
 - [ ] Instrução sem intenção reconhecida → `not_understood`, nenhum passo, 3 exemplos no texto final

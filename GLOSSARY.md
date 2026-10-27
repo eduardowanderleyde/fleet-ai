@@ -1,26 +1,113 @@
-# Glossário
+# Fleet AI
 
-| Termo | Definição | Evitar |
-|---|---|---|
-| **Missão** | Uma instrução em linguagem natural enviada ao Fleet AI, mais tudo o que foi feito para cumpri-la (passos, resultado). Tem um `mission_id`. | "job", "tarefa" (job é o termo do Fleet UI para record/replay) |
-| **Passo** | Uma chamada de ferramenta feita durante a missão: nome, entrada (já com escopo aplicado) e resultado. | "step" na documentação em português |
-| **Ferramenta** | Operação de alto nível que um planejador pode chamar (`list_robots`, `move_robot`...). Cada ferramenta corresponde a uma ou mais chamadas do contrato de frota. | "tool" na documentação em português |
-| **Despachante** | Componente único que recebe nome e entrada de uma ferramenta, aplica o escopo de robô e chama o Executor. Usado pelos dois planejadores. | |
-| **Planejador** | Quem transforma a instrução em passos. Porta com duas implementações: determinístico e LLM. | "agente" para o planejador determinístico |
-| **Planejador determinístico** | Planejador padrão: reconhece intenções por regras, monta um plano fixo e o executa. Sem modelo de linguagem, sem rede, sem custo. | "IA", "agente" |
-| **Planejador LLM** | O loop de tool use portado do Fleet UI (lá chamado Planner), atrás da porta de LLM. Desligado por padrão. | "Planner" sem qualificação |
-| **Intenção** | Uma ação que o planejador determinístico sabe reconhecer: listar robôs, estado de um robô, mover até lugar nomeado, mover até coordenada, cancelar. | "comando" |
-| **Lugar nomeado** | Ponto do cenário com nome e sinônimos em português e inglês (ex.: "doca de carga" / "loading dock"). Não faz parte do contrato de frota. | "waypoint" (no Fleet UI, waypoint é ponto de rota gravada) |
-| **Apelido** | Nome alternativo de um robô no cenário ("robô 1", "robot one"). | |
-| **Contrato de frota** | O subconjunto da API HTTP do Fleet UI que o Executor usa (status, lista de robôs, ir até um ponto, cancelar). Qualquer backend de frota precisa cumpri-lo com os mesmos formatos. | "API do robô" |
-| **Backend de frota** | Um serviço que implementa o contrato de frota. Existem dois: SimFleet e Fleet UI. | |
-| **Adaptador de frota** | A configuração que liga o Executor a um backend de frota (`sim` ou `fleet_ui`). | |
-| **SimFleet** | Backend de frota 2D, sem ROS: robôs cinemáticos sobre um mapa de ocupação, com A* e relógio simulado. Não é evidência científica. | "simulador" sem qualificação (confunde com Gazebo) |
-| **Fleet UI** | O sistema original com ROS 2, Nav2 e Gazebo ou robôs reais. Backend de frota para pesquisa. | |
-| **Cenário** | Configuração lida pelo SimFleet e pelo Fleet AI: mapa, resolução, origem, robôs (id, papel, apelidos, pose inicial) e lugares nomeados. | "mundo" (termo do Gazebo) |
-| **Papel** | Classe do robô herdada do Fleet UI. Só `MUUT` (móvel) aceita comando de movimento; `FUUT` e `SU` recusam. | |
-| **Executor** | Cliente HTTP do contrato de frota. Única fronteira entre o Fleet AI e um backend de frota. | |
-| **Escopo de robô** | Restrição opcional de uma missão a um único robô: o despachante reescreve à força o `robot_id` de todo comando. | |
-| **Porta de LLM** | Interface que o planejador LLM usa para falar com um modelo. Na SPEC-001, só o LLM roteirizado a implementa. | |
-| **LLM roteirizado** | Implementação de teste da porta de LLM que devolve uma sequência fixa de respostas. Não faz chamada de rede nem tem custo. | "mock do Claude" |
-| **Analyst** | Leitor de resultados de campanhas do Fleet UI (`summary.json`). Fora da SPEC-001. | |
+Orquestração de frotas de robôs móveis a partir de missões em linguagem natural,
+executadas por ferramentas de alto nível sobre um backend de frota.
+
+## Missões e planejamento
+
+**Missão**:
+Uma instrução em linguagem natural enviada ao Fleet AI, junto com tudo o que foi feito para cumpri-la e o resultado.
+_Avoid_: job, tarefa (job é o termo do Fleet UI para gravação e reprodução de rotas)
+
+**Passo**:
+Uma chamada de ferramenta feita durante uma missão, com a entrada usada e o resultado obtido.
+_Avoid_: step
+
+**Ferramenta**:
+Uma operação de alto nível sobre a frota que um planejador pode usar, como mover um robô ou cancelar sua navegação.
+_Avoid_: tool, comando
+
+**Planejador**:
+Quem transforma a instrução de uma missão em passos.
+_Avoid_: agente (quando se fala do planejador determinístico)
+
+**Planejador determinístico**:
+O planejador padrão: reconhece intenções por regras, sem modelo de linguagem.
+_Avoid_: IA, agente
+
+**Planejador LLM**:
+O planejador que delega a escolha dos passos a um modelo de linguagem; desligado por padrão.
+_Avoid_: Planner (sem qualificação)
+
+**Intenção**:
+Uma ação que o planejador determinístico sabe reconhecer numa instrução, como "mover até um lugar" ou "cancelar".
+_Avoid_: comando
+
+**Escopo de robô**:
+A restrição de uma missão a um único robô, que nenhum passo pode contornar.
+
+**LLM roteirizado**:
+Um modelo de linguagem de mentira, que devolve respostas fixas, usado para testar o planejador LLM sem rede nem custo.
+_Avoid_: mock do Claude
+
+## Frota
+
+**Robô**:
+Uma unidade da frota, identificada por um id único no cenário, com um papel e uma pose.
+_Avoid_: agente, unidade
+
+**Papel**:
+A classe de um robô herdada do Fleet UI; só robôs `MUUT` podem se mover, `FUUT` e `SU` são fixos.
+
+**Apelido**:
+Um nome alternativo de um robô, como "robô 1" ou "robot one".
+
+**Pose**:
+A posição (x, y) e a orientação (yaw) de um robô no plano do mapa.
+
+**Destino**:
+A pose para a qual um robô é mandado navegar.
+_Avoid_: goal, objetivo, waypoint (no Fleet UI, waypoint é um ponto de rota gravada)
+
+**Estado de navegação**:
+Em que ponto da navegação um robô está: parado (`idle`), navegando (`navigating`) ou com a última navegação falhada (`failed`).
+_Avoid_: status do robô (o status é a resposta inteira sobre a frota)
+
+**Caminho**:
+A sequência de pontos que o backend planeja para levar um robô da pose atual até o destino.
+_Avoid_: rota, trajetória
+
+**Trajetória**:
+A sequência de poses que um robô de fato ocupou ao longo do tempo.
+_Avoid_: caminho (o planejado), rota (a gravada no Fleet UI)
+
+**Cancelamento confirmado**:
+Um cancelamento aceito pelo backend e seguido de um estado de navegação fora de `navigating`; só depois dele um novo destino pode ser enviado.
+
+**Código de erro**:
+O identificador estável de por que um comando ou uma navegação falhou, compartilhado com o Fleet UI (por exemplo, `ALREADY_NAVIGATING`).
+_Avoid_: mensagem de erro (a mensagem é só para pessoas)
+
+## Backends
+
+**Cenário**:
+O mundo que o SimFleet simula e que o Fleet AI usa para entender nomes: o mapa, os robôs com seus papéis, apelidos e poses iniciais, e os lugares nomeados.
+_Avoid_: mundo (termo do Gazebo)
+
+**Lugar nomeado**:
+Um ponto do cenário com nome e sinônimos em português e inglês, como "doca de carga" / "loading dock".
+_Avoid_: waypoint, zona
+
+**Contrato de frota**:
+O conjunto de operações HTTP que todo backend de frota oferece, com respostas no mesmo formato.
+_Avoid_: API do robô
+
+**Backend de frota**:
+Um serviço que cumpre o contrato de frota: o SimFleet ou o Fleet UI.
+
+**Adaptador de frota**:
+A peça do Fleet AI que conecta o Executor a um backend de frota específico e traduz as respostas dele para o contrato.
+_Avoid_: driver, conector
+
+**SimFleet**:
+O backend de frota 2D e sem ROS, que move robôs cinemáticos sobre o mapa de um cenário; não é evidência científica.
+_Avoid_: simulador (sem qualificação; confunde com o Gazebo)
+
+**Fleet UI**:
+O sistema original de pesquisa, com ROS 2, Nav2 e Gazebo ou robôs reais.
+
+**Executor**:
+A fronteira única do Fleet AI com um backend de frota: tudo o que um passo faz na frota passa por ele.
+
+**Analyst**:
+O leitor de resultados de campanhas do Fleet UI; fora da SPEC-001.
