@@ -17,7 +17,8 @@ pytestmark = pytest.mark.anyio
 
 async def test_scoped_mission_moves_only_the_scoped_robot() -> None:
     async with mission_stack() as stack:
-        mission = await stack.run_mission("leve o tb2 até a doca de carga", robot_id="tb1")
+        # Citar outro robô é conflito de escopo (ticket 09); aqui a instrução cita o tb1.
+        mission = await stack.run_mission("leve o tb1 até a doca de carga", robot_id="tb1")
         poses = (await stack.fleet.get("/api/status")).json()["poses"]
 
     assert mission["status"] == "completed"

@@ -104,7 +104,7 @@ O sistema inteiro sobe e passa nos testes **sem nenhuma chave de API**.
 - **Falha de navegação** (destino inválido ou abortado): o `move_robot` é aceito e a falha aparece no resultado do `wait_for_arrival` (`nav_state: failed`, `last_error`); a missão termina `completed` com o texto final explicando a falha.
 - Em todos os casos a missão foi entendida e executada até onde o backend permitiu; por isso o status é `completed`, e o sucesso ou a falha da ação ficam no texto final e nos passos.
 - **Cancelar:** o texto final reflete o resultado do cancelamento; só diz que a navegação foi cancelada com `confirmed`. Com `ambiguous`, diz que o robô parou mas que não é possível afirmar que foi pelo cancelamento; com `not_confirmed`, diz que o robô continua navegando.
-- **Conflito de escopo** (ticket 09): numa missão com `robot_id` de escopo, se a instrução cita explicitamente **outro** robô (pelo id, por um apelido de outro robô do cenário ou por uma referência com cara de robô fora do cenário, como "tb9"), o planejador determinístico recusa com `not_understood`, explica o conflito (robô citado × robô do escopo) e não chama nenhuma ferramenta. Se a instrução cita o próprio robô do escopo (por id ou apelido), ou não cita robô nenhum, a missão segue com o robô do escopo. A reescrita estrutural do `robot_id` no despachante continua valendo para qualquer planejador: o conflito é uma recusa a mais do planejador determinístico, não substitui a garantia do despachante.
+- **Conflito de escopo** (ticket 09): numa missão com `robot_id` de escopo, se a instrução cita explicitamente **outro** robô (pelo id, por um apelido de outro robô do cenário ou por uma referência com cara de robô fora do cenário, como "tb9"), o planejador determinístico recusa com `not_understood`, explica o conflito (robô citado × robô do escopo) e não chama nenhuma ferramenta. Se a instrução cita o próprio robô do escopo (por id ou apelido), ou não cita robô nenhum, a missão segue com o robô do escopo. A reescrita estrutural do `robot_id` no despachante continua valendo para qualquer planejador: o conflito é uma recusa a mais do planejador determinístico, não substitui a garantia do despachante. O escopo vale só dentro da missão: a ferramenta `list_robots` e os endpoints de leitura da frota no backend (`/api/status`, `/api/list_robots`) não são restritos por ele.
 - O planejador determinístico não faz chamadas de rede além do despachante e não tem aleatoriedade.
 
 ### Planejador LLM (desligado por padrão)
@@ -168,14 +168,14 @@ Mesmos caminhos e parâmetros do `fleet-ui@a57a3b1`. Consultas sem mudança de f
 
 - `POST /v1/missions` com `{"instruction": str, "robot_id": str | null}` → `202 {"mission_id": str, "status": "running"}`. A missão roda em segundo plano.
 - `GET /v1/missions/{mission_id}` → `{"mission_id", "status", "instruction", "robot_id", "planner", "language", "steps": [{"tool", "input", "result", "is_error"}], "final_text", "created_at", "finished_at"}`
-- Status: `running`, `completed`, `not_understood`, `incomplete` (tempo máximo da missão, navegação que não terminou no prazo do Executor (`ExecutorTimeout`) ou, no planejador LLM, limite de turnos), `failed` (erro interno, cancelamento da tarefa ou backend de frota indisponível), `rejected` (barrada por uma guarda). `running` é o único status não terminal.
-- Recusas: `422` entrada inválida, `429` taxa ou concorrência (com `Retry-After`). Corpo `{"error": <código>, "message": <texto>}`.
+- Status: `running`, `completed`, `not_understood`, `incomplete` (tempo máximo da missão, navegação que não terminou no prazo do Executor (`ExecutorTimeout`) ou, no planejador LLM, limite de turnos), `failed` (erro interno, cancelamento da tarefa ou backend de frota indisponível). `running` é o único status não terminal. `rejected` fica reservado e não é usado na SPEC-001: as guardas recusam com 422 ou 429 sem criar missão (ticket 09).
+- Recusas: `422` entrada inválida (`invalid_request`: corpo malformado, instrução vazia ou longa demais, `robot_id` fora do formato `[A-Za-z0-9_-]{1,32}`), `429` taxa (`rate_limited`) ou concorrência (`too_many_missions`), com `Retry-After` em segundos. Corpo `{"error": <código>, "message": <texto>}`. Uma recusa não cria missão nem chega a planejar.
 - `GET /health` → `{"status", "fleet_adapter", "fleet_backend_reachable", "planner", "llm_enabled"}`
 - Missões ficam em memória no MVP, com no máximo N missões retidas (as mais antigas são descartadas).
 
 ### Encerramento garantido da missão (ticket 13)
 
-- **Garantia:** enquanto o processo do Fleet AI estiver ativo, toda falha tratada leva a missão a um status terminal (`completed`, `not_understood`, `incomplete`, `failed`; `rejected` vem das guardas), com `finished_at` preenchido e os passos já executados preservados.
+- **Garantia:** enquanto o processo do Fleet AI estiver ativo, toda falha tratada leva a missão a um status terminal (`completed`, `not_understood`, `incomplete`, `failed`), com `finished_at` preenchido e os passos já executados preservados.
 - **Mapeamento:** `ExecutorTimeout` → `incomplete`; `FleetBackendError` (inclusive falhas de transporte e respostas fora do contrato, ADR-0005) → `failed`; qualquer outra exceção da execução → `failed`; cancelamento da tarefa (`asyncio.CancelledError`) → `failed`, e o cancelamento é **repropagado**, não suprimido.
 - **`ExecutorTimeout` sem cancelamento automático** nesta etapa: o texto final diz explicitamente que a navegação não terminou no prazo e que **o robô pode continuar navegando**; não afirma chegada nem cancelamento. Cancelar ao estourar o tempo máximo da missão é do ticket 08.
 - **Passo que falhou:** quando uma ferramenta falha com `FleetBackendError` ou `ExecutorTimeout`, o passo é registrado com `is_error: true` e `result: {"error": "backend_unavailable" | "navigation_timeout", "message": <texto genérico>}` antes de a falha subir.
@@ -194,8 +194,10 @@ Mesmos caminhos e parâmetros do `fleet-ui@a57a3b1`. Consultas sem mudança de f
 | Missões retidas em memória | 500 |
 | Turnos do planejador LLM por missão | 8 |
 
-- O IP do cliente vem da conexão; `X-Forwarded-For` só é usado se a conexão vier de um proxy confiável configurado.
-- Rate limit e concorrência em memória (um processo).
+- O IP do cliente vem da conexão; `X-Forwarded-For` só é usado se a conexão vier de um proxy confiável configurado, e então vale o endereço mais à direita que não é de um proxy confiável.
+- Rate limit e concorrência em memória (um processo). A taxa usa janelas deslizantes de 60 s e de 24 h e só conta missões aceitas; uma recusa por concorrência não gasta cota.
+- Acima do teto de missões retidas, a mais antiga sai da memória (mesmo se ainda estiver rodando; ela termina normalmente, mas o `GET` dela passa a dar 404).
+- Variáveis de ambiente: `FLEET_AI_MAX_INSTRUCTION_CHARS`, `FLEET_AI_MISSIONS_PER_MINUTE`, `FLEET_AI_MISSIONS_PER_DAY`, `FLEET_AI_MAX_CONCURRENT`, `FLEET_AI_MISSIONS_RETAINED`, `FLEET_AI_MISSION_TIMEOUT`, `FLEET_AI_CANCEL_GRACE` e `FLEET_AI_TRUSTED_PROXIES` (lista separada por vírgula). Valor inválido impede o serviço de subir.
 
 ### Configuração
 

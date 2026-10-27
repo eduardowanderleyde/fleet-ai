@@ -16,4 +16,6 @@ def without_scenario_override(monkeypatch: pytest.MonkeyPatch) -> None:
     """Variáveis de configuração do shell não podem mudar o comportamento dos testes."""
     monkeypatch.delenv("SIMFLEET_SCENARIO", raising=False)
     monkeypatch.delenv("SIMFLEET_TIME_SCALE", raising=False)
-    monkeypatch.delenv("FLEET_AI_SCENARIO", raising=False)
+    for name in list(os.environ):
+        if name.startswith("FLEET_AI_"):
+            monkeypatch.delenv(name)

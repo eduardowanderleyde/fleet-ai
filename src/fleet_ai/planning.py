@@ -99,7 +99,7 @@ class DeterministicPlanner:
         self, instruction: str, robot_id: str | None, dispatcher: Dispatcher
     ) -> PlanOutcome:
         outcome = await self._plan(instruction, robot_id, dispatcher)
-        if robot_id is None:
+        if robot_id is None or outcome.status != "completed":
             return outcome
         # O despachante já força o robô; o texto deixa o escopo explícito.
         scope = _SCOPE_TEXT[outcome.language].format(robot=robot_id)
@@ -115,8 +115,17 @@ class DeterministicPlanner:
         intents = _intents(text)
         if _SEQUENCE.search(text) or len(intents) > 1 or len(places) + bool(coordinate) > 1:
             return self._not_understood("multiple_actions", language)
-        robot = robot_id or _find(text, self._robots)
-        if robot is None and _ROBOT_LIKE.search(text):
+        named = _find(text, self._robots)
+        robot_like = _ROBOT_LIKE.search(text)
+        if robot_id is not None:
+            # Conflito de escopo: a instrução cita outro robô (SPEC-001). Nada é
+            # executado; o despachante continua forçando o escopo para qualquer planejador.
+            other = named if named is not None else (robot_like.group(0) if robot_like else None)
+            if other is not None and other != robot_id:
+                text_ = _SCOPE_CONFLICT[language].format(named=other, scope=robot_id)
+                return PlanOutcome("not_understood", language, text_)
+        robot = robot_id or named
+        if robot is None and robot_like:
             return self._not_understood("unknown_robot", language)
         if intents == {"list"}:
             return await _list_robots(language, dispatcher)
@@ -136,6 +145,17 @@ class DeterministicPlanner:
         text = _NOT_UNDERSTOOD[reason][language].format(names=names.get(reason, ""))
         return PlanOutcome("not_understood", language, text)
 
+
+_SCOPE_CONFLICT: dict[Language, str] = {
+    "pt": (
+        "A instrução cita o {named}, mas esta missão está restrita ao {scope}. "
+        "Nada foi executado; envie a instrução para o {scope} ou sem escopo."
+    ),
+    "en": (
+        "The instruction names {named}, but this mission is restricted to {scope}. "
+        "Nothing was executed; send the instruction for {scope} or without a scope."
+    ),
+}
 
 _SCOPE_TEXT: dict[Language, str] = {
     "pt": "Missão restrita ao {robot}.",
