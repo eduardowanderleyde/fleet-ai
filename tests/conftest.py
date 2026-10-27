@@ -13,6 +13,7 @@ def without_api_keys(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture(autouse=True)
 def without_scenario_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Variáveis SIMFLEET_* do shell não podem mudar o comportamento dos testes."""
+    """Variáveis de configuração do shell não podem mudar o comportamento dos testes."""
     monkeypatch.delenv("SIMFLEET_SCENARIO", raising=False)
     monkeypatch.delenv("SIMFLEET_TIME_SCALE", raising=False)
+    monkeypatch.delenv("FLEET_AI_SCENARIO", raising=False)

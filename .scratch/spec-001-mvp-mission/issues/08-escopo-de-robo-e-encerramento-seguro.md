@@ -15,3 +15,5 @@
 ## Comments
 
 - 2026-10-26 (ticket 05): o Executor só converte em `FleetBackendError` a falha do `ros2 service call` no Fleet UI. Backend fora do ar (erro de conexão do `httpx2`), HTTP 5xx ou resposta que não é JSON ainda escapam como exceções do `httpx2`; converter no adaptador ao implementar "backend de frota indisponível → missão `failed`".
+
+- 2026-10-26 (ticket 06), **prioridade**: hoje uma exceção na execução da missão (`FleetBackendError`, erro de conexão, `ExecutorTimeout`) escapa da tarefa em segundo plano e a missão fica em `running` para sempre. Cobrir com `failed` (backend) e `incomplete` (tempo) conforme a SPEC-001.

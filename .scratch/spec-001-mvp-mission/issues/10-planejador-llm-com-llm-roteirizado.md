@@ -13,3 +13,7 @@
 - [ ] Roteiro que nunca para de pedir ferramentas → `incomplete` após o limite de turnos, com os passos preservados
 - [ ] Escopo de robô do ticket 08 vale também aqui (roteiro pede tb2, passo registra tb1)
 - [ ] Configuração padrão → planejador determinístico; `llm` exige configuração explícita; adaptador de LLM diferente de `scripted` impede o serviço de subir
+
+## Comments
+
+- 2026-10-26 (ticket 06): o critério "despachante com as cinco ferramentas, nenhuma outra" do ticket 06 não é observável pela API com o planejador determinístico. Verificar aqui: as ferramentas que o LLM roteirizado recebe são exatamente `list_robots`, `get_robot_status`, `move_robot`, `wait_for_arrival`, `cancel_navigation`, e um `tool_use` com outro nome vira erro.

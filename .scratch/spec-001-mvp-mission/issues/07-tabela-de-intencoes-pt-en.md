@@ -14,3 +14,7 @@
 - [ ] Mesma instrução produz sempre o mesmo plano (determinismo verificado repetindo os casos)
 - [ ] Os exemplos devolvidos em `not_understood` são todos entendidos pelo próprio planejador (teste dedicado)
 - [ ] Intenção cancelar: o texto final só afirma que a navegação foi cancelada com resultado `confirmed`; com `ambiguous` diz que o robô parou sem afirmar a causa; com `not_confirmed` diz que o robô continua navegando; com `CANCEL_FAILED` diz que não havia navegação ativa (testes `test_cancel_text_reflects_confirmed`, `..._ambiguous`, `..._not_confirmed`, `..._without_active_navigation`, nos dois idiomas)
+
+## Comments
+
+- 2026-10-26 (ticket 06): a detecção de idioma conta palavras-marcadoras; `_PT_WORDS` inclui "o" e "a", e "a" também é artigo em inglês ("send tb2 to a dock" pesa para o português). Revisar a lista ao montar a tabela de casos nos dois idiomas.

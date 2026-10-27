@@ -10,10 +10,11 @@ por regras; não há LLM pago nem agente autônomo consumindo tokens. A integra�
 com modelos reais é uma funcionalidade futura, opcional e desligada por padrão
 ([ADR-0004](docs/adr/0004-planejador-deterministico-e-llm-opcional.md)).
 
-> **Status: em implementação.** SPEC-001 (MVP), tickets 01 a 05 de 12 concluídos:
-> o SimFleet cumpre o contrato de frota normalizado, e o Executor do Fleet AI fala
-> com ele ou com o Fleet UI por adaptadores, com uma suíte de contrato comum.
-> Ainda não há missões nem planejadores.
+> **Status: em implementação.** SPEC-001 (MVP), tickets 01 a 06 de 12 concluídos:
+> `POST /v1/missions` aceita uma instrução como "leve o tb1 até a doca de carga",
+> o planejador determinístico a executa no SimFleet e `GET /v1/missions/{id}`
+> mostra passos e texto final. A tabela completa de intenções e as guardas vêm
+> nos próximos tickets.
 
 ## Origem
 
