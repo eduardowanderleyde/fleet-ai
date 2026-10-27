@@ -10,9 +10,10 @@ por regras; não há LLM pago nem agente autônomo consumindo tokens. A integra�
 com modelos reais é uma funcionalidade futura, opcional e desligada por padrão
 ([ADR-0004](docs/adr/0004-planejador-deterministico-e-llm-opcional.md)).
 
-> **Status: em implementação.** SPEC-001 (MVP), tickets 01 e 02 de 12 concluídos:
-> os dois serviços sobem e o SimFleet já responde lista de robôs e status do
-> cenário warehouse. Ainda não há movimento nem missões.
+> **Status: em implementação.** SPEC-001 (MVP), tickets 01 a 03 de 12 concluídos:
+> o SimFleet carrega o warehouse e navega robôs até um destino com A* e
+> suavização, de forma assíncrona. Ainda não há recusas completas, Executor nem
+> missões.
 
 ## Origem
 
@@ -101,6 +102,12 @@ O SimFleet carrega o cenário indicado em `SIMFLEET_SCENARIO` (um arquivo
 (MUUT), tb3 fixo (FUUT) e lugares nomeados como "doca de carga" e "corredor
 central". Cenário inválido (mapa ausente, robô ou lugar em obstáculo, nome
 repetido) impede o serviço de subir.
+
+A navegação é cinemática e simplificada (MVP, ADR-0005): A* numa grade de
+planejamento reduzida de forma conservadora (0,09 m no warehouse), caminho
+suavizado sem tocar a área inflada dos obstáculos, velocidade constante
+(0,3 m/s) e giro instantâneo. Não é uma simulação física fiel. O relógio
+simulado pode ser acelerado com `SIMFLEET_TIME_SCALE`.
 
 A suíte remove do ambiente qualquer variável `*_API_KEY` e falha se algum SDK de
 LLM pago aparecer no `uv.lock`, inclusive como dependência indireta.

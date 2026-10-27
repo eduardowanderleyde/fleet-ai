@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from simfleet.app import create_app
 from simfleet.scenario import DEFAULT_SCENARIO, ScenarioError, load_scenario
-from tests.scenarios import small_scenario, write_scenario
+from tests.scenarios import OPEN_ROOM, room_scenario, small_scenario, write_scenario
 
 
 def test_default_scenario_is_the_warehouse_with_two_mobile_robots_and_one_fixed() -> None:
@@ -227,3 +227,52 @@ def test_scenario_that_is_not_valid_toml_prevents_startup(tmp_path: Path) -> Non
 def test_missing_scenario_file_prevents_startup(tmp_path: Path) -> None:
     with pytest.raises(ScenarioError, match="não encontrado"):
         create_app(tmp_path / "nope.toml")
+
+
+def _scenario_on_a_3_cm_map(planning_resolution: float | None) -> dict[str, Any]:
+    scenario = room_scenario()
+    scenario["map"]["resolution"] = 0.03
+    if planning_resolution is None:
+        del scenario["map"]["planning_resolution"]
+    else:
+        scenario["map"]["planning_resolution"] = planning_resolution
+    scenario["robots"] = [{"id": "r1", "role": "MUUT", "start": [0.45, 0.45, 0.0], "aliases": []}]
+    return scenario
+
+
+@pytest.mark.parametrize(("declared", "expected"), [(0.09, 0.09), (0.06, 0.06), (None, 0.09)])
+def test_planning_resolution_is_an_integer_multiple_of_the_map_resolution(
+    tmp_path: Path, declared: float | None, expected: float
+) -> None:
+    scenario = load_scenario(write_scenario(tmp_path, _scenario_on_a_3_cm_map(declared), OPEN_ROOM))
+
+    assert scenario.planning_resolution == pytest.approx(expected)
+
+
+@pytest.mark.parametrize("declared", [0.1, 0.045, 0.0, -0.03])
+def test_planning_resolution_that_is_not_a_multiple_prevents_startup(
+    tmp_path: Path, declared: float
+) -> None:
+    path = write_scenario(tmp_path, _scenario_on_a_3_cm_map(declared), OPEN_ROOM)
+
+    with pytest.raises(ScenarioError, match="planning_resolution"):
+        create_app(path)
+
+
+def test_warehouse_plans_on_a_0_09_m_grid() -> None:
+    assert load_scenario(DEFAULT_SCENARIO).planning_resolution == pytest.approx(0.09)
+
+
+def test_place_blocked_only_on_the_planning_grid_prevents_startup(tmp_path: Path) -> None:
+    # Sala de 1,5 m em pixels de 0,05 m com um único pixel ocupado em x, y = 0,50..0,55 m.
+    rows = OPEN_ROOM.splitlines()
+    row = len(rows) - 1 - 10
+    rows[row] = rows[row][:10] + "#" + rows[row][11:]
+    scenario = room_scenario()
+    scenario["map"].update(resolution=0.05, planning_resolution=0.1)
+    scenario["robots"] = [{"id": "r1", "role": "MUUT", "start": [0.25, 0.25, 0.0], "aliases": []}]
+    # Pixel vizinho, livre no mapa, mas na mesma célula de planejamento de 0,1 m.
+    scenario["places"] = [{"name": "pillar", "synonyms": [], "x": 0.575, "y": 0.575, "yaw": 0.0}]
+
+    with pytest.raises(ScenarioError, match="pillar.*planejamento"):
+        create_app(write_scenario(tmp_path, scenario, "\n".join(rows)))

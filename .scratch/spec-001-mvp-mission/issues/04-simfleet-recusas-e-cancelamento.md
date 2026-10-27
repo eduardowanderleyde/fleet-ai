@@ -38,3 +38,4 @@ Seam: API HTTP do SimFleet em processo, relógio manual injetado; logs capturado
 
 - 2026-10-26 (ticket 02): o papel do robô ainda é texto livre no cenário (`"MUTT"` carregaria sem erro). Ao implementar a recusa por papel, decidir se o cenário passa a validar `MUUT`/`FUUT`/`SU`; no Fleet UI, papel desconhecido apenas não se move.
 - 2026-10-26 (grilling): validação do papel no carregamento aprovada pelo dono (ADR-0005).
+- 2026-10-26 (ticket 03): já existe o caminho mínimo `failed` / `NAV2_REJECTED` quando não há rota, ainda sem teste e sem log de causa; cobrir aqui. Robô desconhecido no `go_to_point` hoje gera HTTP 500 (`KeyError`). Risco conhecido: a célula de partida é sempre livre na grade de planejamento, mas o primeiro segmento é validado na grade fina; um robô muito perto de obstáculo poderia ser recusado mesmo com rota existente. Considerar um teste para esse caso.

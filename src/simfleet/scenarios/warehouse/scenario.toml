@@ -11,6 +11,10 @@ image = "warehouse_map.png"
 resolution = 0.03
 origin = [-15.1, -25.0]
 inflate_m = 0.25
+planning_resolution = 0.09  # 3 pixels de 0,03 m
+
+[simulation]
+speed_mps = 0.3  # perto do máximo do TurtleBot4 (Create 3)
 
 [[robots]]
 id = "tb1"

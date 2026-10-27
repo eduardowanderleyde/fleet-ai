@@ -5,15 +5,22 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 
-from simfleet.scenario import DEFAULT_SCENARIO, Pose, Robot, load_scenario
+from simfleet.clock import Clock, ScaledClock
+from simfleet.fleet import Fleet, RobotState
+from simfleet.scenario import DEFAULT_SCENARIO, Pose, load_scenario
 
 
-def create_app(scenario_path: Path | None = None) -> FastAPI:
-    """Sem `scenario_path`, usa SIMFLEET_SCENARIO ou, na falta dela, o warehouse."""
+def create_app(scenario_path: Path | None = None, clock: Clock | None = None) -> FastAPI:
+    """Sem `scenario_path`, usa SIMFLEET_SCENARIO ou, na falta dela, o warehouse.
+
+    Sem `clock`, usa o relógio real com o fator SIMFLEET_TIME_SCALE (padrão 1).
+    """
     scenario = load_scenario(
         scenario_path or Path(os.environ.get("SIMFLEET_SCENARIO", DEFAULT_SCENARIO))
     )
+    fleet = Fleet(scenario, clock or ScaledClock(float(os.environ.get("SIMFLEET_TIME_SCALE", "1"))))
     app = FastAPI(title="SimFleet")
 
     @app.get("/health")
@@ -26,12 +33,18 @@ def create_app(scenario_path: Path | None = None) -> FastAPI:
 
     @app.get("/api/status")
     def status() -> dict[str, Any]:
-        poses = {robot.id: _pose_view(robot.start) for robot in scenario.robots}
+        robots = fleet.robots()
+        poses = {state.robot.id: _pose_view(state.pose) for state in robots}
         return {
-            "robots": [_robot_view(robot) for robot in scenario.robots],
+            "robots": [_robot_view(state) for state in robots],
             "pose": next(iter(poses.values()), _EMPTY_POSE),
             "poses": poses,
         }
+
+    @app.post("/api/go_to_point")
+    def go_to_point(robot_id: str, x: float, y: float, yaw: float = 0.0) -> JSONResponse:
+        result = fleet.go_to_point(robot_id, x, y, yaw)
+        return JSONResponse(result.as_dict(), status_code=result.http_status)
 
     return app
 
@@ -44,14 +57,14 @@ def _pose_view(pose: Pose) -> dict[str, Any]:
     return {"x": pose.x, "y": pose.y, "yaw": pose.yaw, "valid": True}
 
 
-def _robot_view(robot: Robot) -> dict[str, Any]:
+def _robot_view(state: RobotState) -> dict[str, Any]:
     return {
-        "robot_id": robot.id,
-        "role": robot.role,
-        "nav_state": "idle",
+        "robot_id": state.robot.id,
+        "role": state.robot.role,
+        "nav_state": state.nav_state,
         "current_route": "",
         "collection_on": False,
         "collection_file": "",
-        "last_error": "",
+        "last_error": state.last_error,
         "bytes_written": 0,
     }

@@ -99,6 +99,11 @@ recusas 403 do backend HTTP. O `fleet-ui` continua sem alterações. O formato d
   resolução do mapa; um valor que não seja múltiplo impede o cenário de
   carregar. Sem o campo, usa-se o múltiplo mais próximo de 0,1 m. No warehouse
   (mapa de 0,03 m/px), 0,09 m.
+- A inflação garante folga métrica: um pixel é bloqueado se a menor distância
+  entre o quadrado dele e o de um pixel ocupado for menor que `inflate_m`, então
+  todo ponto de um pixel livre fica a pelo menos `inflate_m` de um obstáculo. É
+  mais rígida que a do `gridmap.py` do Fleet UI, que media entre centros de
+  pixel e deixava o robô chegar mais perto (0,268 m com `inflate_m` de 0,3 m).
 - A redução é conservadora: uma célula de planejamento é bloqueada se qualquer
   pixel dela estiver bloqueado na grade inflada da resolução original. A célula
   de partida do robô é sempre considerada livre.

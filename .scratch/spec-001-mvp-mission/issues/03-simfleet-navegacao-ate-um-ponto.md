@@ -4,22 +4,22 @@
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Destino livre e alcançável → `200 {"success": true, "message": "Navigation started", "error_code": ""}` e o robô passa a `navigating`
-- [ ] Lendo o status repetidamente com o relógio manual, o robô chega e volta a `idle`, `last_error` vazio, pose final a até 5 cm do destino e yaw igual ao pedido
-- [ ] Toda pose observada durante o trajeto está livre na grade inflada da resolução original
-- [ ] O caminho contorna obstáculos: entre dois pontos separados por uma parede, a trajetória passa pela abertura, e o tempo de chegada é coerente com o comprimento do contorno, não com a linha reta
-- [ ] Caminho suavizado: em área aberta, a trajetória até um destino na diagonal é uma reta (sem "escadinha" de A* 8-conectado)
-- [ ] Redução conservadora: um corredor mais estreito que a célula de planejamento, livre na resolução original, não é usado pelo caminho
-- [ ] `planning_resolution` no cenário precisa ser múltiplo inteiro da resolução do mapa: 0,09 com mapa de 0,03 carrega; 0,1 com mapa de 0,03 impede o cenário de carregar com `ScenarioError`; sem o campo, usa o múltiplo mais próximo de 0,1 m
-- [ ] O warehouse declara `planning_resolution = 0.09`
-- [ ] Lugares nomeados são validados ao carregar também na grade de planejamento: um lugar livre na grade inflada original mas bloqueado na grade reduzida impede o cenário de carregar, com mensagem que cita o lugar e a grade
-- [ ] Mover um robô não altera a pose dos outros
-- [ ] Mesmo cenário e mesma sequência de comandos produzem a mesma sequência de poses
-- [ ] `go_to_point` com o robô em `navigating` → `409`, `success: false`, `error_code: ALREADY_NAVIGATING`; o destino em curso não muda
-- [ ] `go_to_point` depois da chegada (robô em `idle`) é aceito normalmente
-- [ ] `speed_mps` vem do cenário (padrão 0,3 m/s); o fator de escala do relógio vem da configuração do serviço; o warehouse planeja uma rota longa (base → doca de carga) em menos de 1 s
+- [x] Destino livre e alcançável → `200 {"success": true, "message": "Navigation started", "error_code": ""}` e o robô passa a `navigating`
+- [x] Lendo o status repetidamente com o relógio manual, o robô chega e volta a `idle`, `last_error` vazio, pose final a até 5 cm do destino e yaw igual ao pedido
+- [x] Toda pose observada durante o trajeto está livre na grade inflada da resolução original
+- [x] O caminho contorna obstáculos: entre dois pontos separados por uma parede, a trajetória passa pela abertura, e o tempo de chegada é coerente com o comprimento do contorno, não com a linha reta
+- [x] Caminho suavizado: em área aberta, a trajetória até um destino na diagonal é uma reta (sem "escadinha" de A* 8-conectado)
+- [x] Redução conservadora: um corredor mais estreito que a célula de planejamento, livre na resolução original, não é usado pelo caminho
+- [x] `planning_resolution` no cenário precisa ser múltiplo inteiro da resolução do mapa: 0,09 com mapa de 0,03 carrega; 0,1 com mapa de 0,03 impede o cenário de carregar com `ScenarioError`; sem o campo, usa o múltiplo mais próximo de 0,1 m
+- [x] O warehouse declara `planning_resolution = 0.09`
+- [x] Lugares nomeados são validados ao carregar também na grade de planejamento: um lugar livre na grade inflada original mas bloqueado na grade reduzida impede o cenário de carregar, com mensagem que cita o lugar e a grade
+- [x] Mover um robô não altera a pose dos outros
+- [x] Mesmo cenário e mesma sequência de comandos produzem a mesma sequência de poses
+- [x] `go_to_point` com o robô em `navigating` → `409`, `success: false`, `error_code: ALREADY_NAVIGATING`; o destino em curso não muda
+- [x] `go_to_point` depois da chegada (robô em `idle`) é aceito normalmente
+- [x] `speed_mps` vem do cenário (padrão 0,3 m/s); o fator de escala do relógio vem da configuração do serviço; o warehouse planeja uma rota longa (base → doca de carga) em menos de 1 s
 
 ## Testes previstos
 

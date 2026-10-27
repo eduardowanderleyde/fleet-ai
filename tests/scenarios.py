@@ -54,8 +54,11 @@ def write_scenario(directory: Path, scenario: dict[str, Any], drawing: str = SMA
 
 
 def _to_toml(scenario: dict[str, Any]) -> str:
-    lines = [f"name = {_value(scenario['name'])}", "", "[map]"]
-    lines += [f"{key} = {_value(value)}" for key, value in scenario["map"].items()]
+    lines = [f"name = {_value(scenario['name'])}"]
+    for table in ("map", "simulation"):
+        if table in scenario:
+            lines += ["", f"[{table}]"]
+            lines += [f"{key} = {_value(value)}" for key, value in scenario[table].items()]
     for table in ("robots", "places"):
         for item in scenario[table]:
             lines += ["", f"[[{table}]]"]
@@ -69,3 +72,29 @@ def _value(value: Any) -> str:
     if isinstance(value, list):
         return "[" + ", ".join(_value(item) for item in value) + "]"
     return repr(value)
+
+
+# Sala aberta de 3 x 3 m em pixels de 0,1 m, com parede na borda.
+OPEN_ROOM = "\n".join(["#" * 30] + ["#" + "." * 28 + "#"] * 28 + ["#" * 30])
+
+
+def room_scenario(**overrides: Any) -> dict[str, Any]:
+    """Dois robôs MUUT numa sala aberta, grade de 0,1 m, sem inflação, 1 m/s."""
+    scenario: dict[str, Any] = {
+        "name": "room",
+        "map": {
+            "image": "map.png",
+            "resolution": 0.1,
+            "origin": [0.0, 0.0],
+            "inflate_m": 0.0,
+            "planning_resolution": 0.1,
+        },
+        "simulation": {"speed_mps": 1.0},
+        "robots": [
+            {"id": "r1", "role": "MUUT", "start": [0.5, 0.5, 0.0], "aliases": []},
+            {"id": "r2", "role": "MUUT", "start": [2.5, 2.5, 0.0], "aliases": []},
+        ],
+        "places": [],
+    }
+    scenario.update(overrides)
+    return scenario

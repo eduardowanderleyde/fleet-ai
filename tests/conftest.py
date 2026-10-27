@@ -13,5 +13,6 @@ def without_api_keys(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture(autouse=True)
 def without_scenario_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Um SIMFLEET_SCENARIO do shell não pode trocar o cenário padrão dos testes."""
+    """Variáveis SIMFLEET_* do shell não podem mudar o comportamento dos testes."""
     monkeypatch.delenv("SIMFLEET_SCENARIO", raising=False)
+    monkeypatch.delenv("SIMFLEET_TIME_SCALE", raising=False)
