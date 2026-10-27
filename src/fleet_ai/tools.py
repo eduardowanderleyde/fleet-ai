@@ -1,21 +1,24 @@
 """Despachante de ferramentas: a única forma de um planejador agir na frota.
 
 Cada chamada vira um passo da missão. Uma recusa do backend (`CommandRefused`)
-vira um resultado de erro com o `error_code`; falhas do backend propagam.
+vira um resultado de erro com o `error_code`. Falhas do backend
+(`FleetBackendError`) e o prazo do Executor (`ExecutorTimeout`) também ficam
+registradas no passo, com uma mensagem genérica, e depois propagam (SPEC-001).
 """
 
 from collections.abc import Awaitable, Callable
 from dataclasses import asdict
 from typing import Any
 
-from fleet_ai.contract import CommandRefused, RobotStatus
+from fleet_ai.contract import CommandRefused, ExecutorTimeout, FleetBackendError, RobotStatus
 from fleet_ai.executor import Executor
 
 
 class Dispatcher:
-    def __init__(self, executor: Executor) -> None:
+    def __init__(self, executor: Executor, steps: list[dict[str, Any]] | None = None) -> None:
         self._executor = executor
-        self.steps: list[dict[str, Any]] = []
+        # Os passos são da missão: quem cria o despachante pode passar a lista dela.
+        self.steps: list[dict[str, Any]] = steps if steps is not None else []
         self._tools: dict[str, Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]] = {
             "list_robots": self._list_robots,
             "get_robot_status": self._get_robot_status,
@@ -37,10 +40,21 @@ class Dispatcher:
             result, is_error = await self._tools[tool](tool_input), False
         except CommandRefused as refused:
             result, is_error = {"error_code": refused.error_code, "message": refused.message}, True
+        except FleetBackendError:
+            self._record(tool, tool_input, _BACKEND_UNAVAILABLE, is_error=True)
+            raise
+        except ExecutorTimeout:
+            self._record(tool, tool_input, _NAVIGATION_TIMEOUT, is_error=True)
+            raise
+        self._record(tool, tool_input, result, is_error=is_error)
+        return result, is_error
+
+    def _record(
+        self, tool: str, tool_input: dict[str, Any], result: dict[str, Any], *, is_error: bool
+    ) -> None:
         self.steps.append(
             {"tool": tool, "input": tool_input, "result": result, "is_error": is_error}
         )
-        return result, is_error
 
     async def _list_robots(self, _: dict[str, Any]) -> dict[str, Any]:
         return {"robot_ids": await self._executor.list_robots()}
@@ -59,6 +73,11 @@ class Dispatcher:
 
     async def _cancel_navigation(self, tool_input: dict[str, Any]) -> dict[str, Any]:
         return {"outcome": await self._executor.cancel_navigation(tool_input["robot_id"])}
+
+
+# Resultados genéricos: a mensagem do backend vai só para os logs (SPEC-001).
+_BACKEND_UNAVAILABLE = {"error": "backend_unavailable", "message": "Fleet backend unavailable"}
+_NAVIGATION_TIMEOUT = {"error": "navigation_timeout", "message": "Navigation did not end in time"}
 
 
 def _status_view(status: RobotStatus) -> dict[str, Any]:

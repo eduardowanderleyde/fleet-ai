@@ -53,6 +53,8 @@ class FakeFleetUiOptions:
     # O `ros2 service call` falha (timeout do CLI).
     service_call_times_out: bool = False
     robots: list[FakeRobot] = field(default_factory=list)
+    # Quantos POST /api/cancel o fake recebeu (para testes que exigem nenhum cancel).
+    cancel_requests: int = 0
 
 
 def create_fake_fleet_ui(options: FakeFleetUiOptions) -> FastAPI:
@@ -153,6 +155,7 @@ def create_fake_fleet_ui(options: FakeFleetUiOptions) -> FastAPI:
 
     @app.post("/api/cancel")
     def cancel(robot_id: str = "") -> dict[str, Any]:
+        options.cancel_requests += 1
         request = f"robot_id={robot_id!r}"
         robot = robots.get(robot_id)
         if robot is None:

@@ -4,23 +4,23 @@
 
 **Blocked by:** 06
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Nos dois adaptadores, falha de transporte (conexão recusada), HTTP 5xx, corpo que não é JSON e JSON sem os campos do contrato viram `FleetBackendError`
-- [ ] Recusas 4xx **válidas** do contrato continuam sendo recusas (`CommandRefused` com o `error_code`); 4xx **inesperadas** (400, 401, 404, 405), 4xx com corpo malformado, `error_code` desconhecido ou incoerente com o status, e qualquer erro HTTP nas consultas viram `FleetBackendError`
-- [ ] Backend de frota indisponível durante a missão → `failed`, texto final genérico ("backend de frota indisponível") no idioma da instrução, último passo com `is_error: true` e `result.error: "backend_unavailable"`
-- [ ] Falha do `ros2 service call` no Fleet UI e código fora do contrato (`NAV2_UNAVAILABLE`) → `failed` pelo mesmo caminho
-- [ ] Navegação que não termina no prazo do Executor (`ExecutorTimeout`) → `incomplete`; último passo `wait_for_arrival` com `is_error: true` e `result.error: "navigation_timeout"`; o texto final diz que a navegação não terminou no prazo e que o robô pode continuar navegando; nenhum `cancel` é enviado
-- [ ] Exceção inesperada no planejador ou no despachante → `failed` com texto genérico de erro interno; o texto e os passos não contêm a mensagem da exceção
-- [ ] Cancelamento da tarefa da missão (`asyncio.CancelledError`) → a missão fica `failed` com `finished_at`, e o cancelamento é repropagado (a tarefa termina cancelada, não suprimida)
-- [ ] Toda falha tratada gera um log estruturado com `mission_id`, tipo da falha e a mensagem diagnóstica; a resposta da missão nunca contém mensagens do backend, texto de exceção, URLs internas ou credenciais
-- [ ] Em todos os casos acima, os passos executados antes da falha continuam na missão e `finished_at` não é nulo
-- [ ] Depois de uma missão `failed` por backend indisponível, o serviço continua respondendo e uma nova missão com o backend de volta termina `completed`
-- [ ] A detecção de idioma sai do planejador determinístico para um módulo próprio, usado também pelos textos de falha
+- [x] Nos dois adaptadores, falha de transporte (conexão recusada), HTTP 5xx, corpo que não é JSON e JSON sem os campos do contrato viram `FleetBackendError`
+- [x] Recusas 4xx **válidas** do contrato continuam sendo recusas (`CommandRefused` com o `error_code`); 4xx **inesperadas** (400, 401, 404, 405), 4xx com corpo malformado, `error_code` desconhecido ou incoerente com o status, e qualquer erro HTTP nas consultas viram `FleetBackendError`
+- [x] Backend de frota indisponível durante a missão → `failed`, texto final genérico ("backend de frota indisponível") no idioma da instrução, último passo com `is_error: true` e `result.error: "backend_unavailable"`
+- [x] Falha do `ros2 service call` no Fleet UI e código fora do contrato (`NAV2_UNAVAILABLE`) → `failed` pelo mesmo caminho
+- [x] Navegação que não termina no prazo do Executor (`ExecutorTimeout`) → `incomplete`; último passo `wait_for_arrival` com `is_error: true` e `result.error: "navigation_timeout"`; o texto final diz que a navegação não terminou no prazo e que o robô pode continuar navegando; nenhum `cancel` é enviado
+- [x] Exceção inesperada no planejador ou no despachante → `failed` com texto genérico de erro interno; o texto e os passos não contêm a mensagem da exceção
+- [x] Cancelamento da tarefa da missão (`asyncio.CancelledError`) → a missão fica `failed` com `finished_at`, e o cancelamento é repropagado (a tarefa termina cancelada, não suprimida)
+- [x] Toda falha tratada gera um log estruturado com `mission_id`, tipo da falha e a mensagem diagnóstica; a resposta da missão nunca contém mensagens do backend, texto de exceção, URLs internas ou credenciais
+- [x] Em todos os casos acima, os passos executados antes da falha continuam na missão e `finished_at` não é nulo
+- [x] Depois de uma missão `failed` por backend indisponível, o serviço continua respondendo e uma nova missão com o backend de volta termina `completed`
+- [x] A detecção de idioma sai do planejador determinístico para um módulo próprio, usado também pelos textos de falha
 
 ## Testes previstos
 
-Seams: API HTTP do Fleet AI em processo (SPEC-001), com transportes de teste que simulam backend fora do ar ou respostas inválidas, e o fake do Fleet UI do ticket 05; suíte de contrato nos dois adaptadores (ticket 05). **Seam adicional a confirmar:** o cancelamento da tarefa só é observável executando a missão numa tarefa `asyncio` e cancelando-a, então o teste de `CancelledError` chama a função pública que executa uma missão (exposta pelo módulo de missões), não a API HTTP.
+Seams: API HTTP do Fleet AI em processo (SPEC-001), com transportes de teste que simulam backend fora do ar ou respostas inválidas, e o fake do Fleet UI do ticket 05; suíte de contrato nos dois adaptadores (ticket 05). **Seam adicional (confirmado pelo dono em 2026-10-27, como função interna `_execute_mission`):** o cancelamento da tarefa só é observável executando a missão numa tarefa `asyncio` e cancelando-a, então o teste de `CancelledError` chama a função pública que executa uma missão (exposta pelo módulo de missões), não a API HTTP.
 
 | Critério | Teste |
 |---|---|
@@ -40,3 +40,11 @@ Seams: API HTTP do Fleet AI em processo (SPEC-001), com transportes de teste que
 ## Comments
 
 - 2026-10-27: criado a partir da prioridade registrada no ticket 08 (comentário do ticket 06). Herda do ticket 08 o critério "backend de frota indisponível → missão `failed`".
+
+- 2026-10-27 (implementação), **riscos restantes**:
+  - A garantia vale para falhas que lançam exceção com o processo ativo. Uma operação que bloqueie sem lançar continua possível; hoje ela é limitada pelo timeout HTTP do adaptador (15 s por chamada) e pelo do Executor (120 s por espera). O tempo máximo da missão (60 s) só passa a valer no ticket 08.
+  - `KeyboardInterrupt` e `SystemExit` passam sem tratamento, de propósito: a missão fica `running`, mas o processo está saindo e as missões vivem em memória.
+  - Missões se perdem num reinício (em memória, SPEC-001).
+  - O `detail` dos logs inclui a mensagem da exceção do `httpx2`, que pode conter a URL do backend. Se um dia a URL do backend carregar credenciais (`http://user:senha@host`), elas podem ir para os logs; não usar credenciais na URL, ou mascarar o `detail` quando isso existir.
+  - Com `ExecutorTimeout` não há cancelamento: o robô pode continuar navegando depois da missão `incomplete` (texto final avisa). O cancelamento ao estourar o tempo máximo é do ticket 08.
+  - `_execute_mission` é interna por nome, mas é importada por `app.py` e pelos testes (decisão do dono, para não virar API pública).

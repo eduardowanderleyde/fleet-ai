@@ -5,14 +5,13 @@ linguagem, monta um plano fixo e o executa pelo despachante.
 """
 
 import re
-import unicodedata
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
+from fleet_ai.language import Language, detect_language, normalize, words
 from fleet_ai.scenario import ScenarioNames
 from fleet_ai.tools import Dispatcher
 
-Language = Literal["pt", "en"]
 PlanStatus = Literal["completed", "not_understood"]
 
 
@@ -41,8 +40,6 @@ class Planner(Protocol):
     ) -> PlanOutcome: ...
 
 
-_PT_WORDS = {"leve", "levar", "mova", "mande", "envie", "va", "ate", "para", "o", "a", "robo"}
-_EN_WORDS = {"move", "send", "take", "go", "drive", "to", "the", "robot"}
 _MOVE_VERBS = {
     "leve",
     "levar",
@@ -77,12 +74,12 @@ class DeterministicPlanner:
 
     def __init__(self, names: ScenarioNames) -> None:
         self._robots = {
-            _normalize(alias): robot.robot_id
+            normalize(alias): robot.robot_id
             for robot in names.robots
             for alias in (robot.robot_id, *robot.aliases)
         }
         self._places = {
-            _normalize(alias): Destination(place.name, place.x, place.y, place.yaw)
+            normalize(alias): Destination(place.name, place.x, place.y, place.yaw)
             for place in names.places
             for alias in (place.name, *place.synonyms)
         }
@@ -90,11 +87,11 @@ class DeterministicPlanner:
     async def run(
         self, instruction: str, robot_id: str | None, dispatcher: Dispatcher
     ) -> PlanOutcome:
-        text = _normalize(instruction)
-        language = _language(text)
+        text = normalize(instruction)
+        language = detect_language(instruction)
         robot = _find(text, self._robots)
         destination = _coordinate(text) or _find(text, self._places)
-        if robot is None or destination is None or not (_words(text) & _MOVE_VERBS):
+        if robot is None or destination is None or not (words(text) & _MOVE_VERBS):
             return PlanOutcome("not_understood", language, _not_understood(language))
         return await _move_to(robot, destination, language, dispatcher)
 
@@ -181,21 +178,6 @@ def _not_understood(language: Language) -> str:
     if language == "pt":
         return f"Não entendi a instrução. Exemplos do que posso fazer: {examples}."
     return f"I did not understand the instruction. Examples of what I can do: {examples}."
-
-
-def _normalize(text: str) -> str:
-    stripped = unicodedata.normalize("NFKD", text.lower())
-    without_accents = "".join(char for char in stripped if not unicodedata.combining(char))
-    return " ".join(without_accents.split())
-
-
-def _words(text: str) -> set[str]:
-    return set(re.findall(r"[a-z0-9]+", text))
-
-
-def _language(text: str) -> Language:
-    words = _words(text)
-    return "pt" if len(words & _PT_WORDS) > len(words & _EN_WORDS) else "en"
 
 
 def _find[T](text: str, names: dict[str, T]) -> T | None:

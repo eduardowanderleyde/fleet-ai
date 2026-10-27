@@ -1,7 +1,6 @@
 """Aplicação HTTP do Fleet AI."""
 
 import os
-from datetime import UTC, datetime
 
 from fastapi import BackgroundTasks, FastAPI
 from fastapi.responses import JSONResponse
@@ -9,10 +8,9 @@ from pydantic import BaseModel
 
 from fleet_ai.adapters import SimAdapter
 from fleet_ai.executor import Executor
-from fleet_ai.missions import Mission
+from fleet_ai.missions import Mission, _execute_mission
 from fleet_ai.planning import DeterministicPlanner, Planner
 from fleet_ai.scenario import load_names
-from fleet_ai.tools import Dispatcher
 
 
 class MissionRequest(BaseModel):
@@ -46,13 +44,7 @@ def create_app(executor: Executor | None = None, planner: Planner | None = None)
         return {"mission_id": mission.mission_id, "status": mission.status}
 
     async def run_mission(mission: Mission) -> None:
-        dispatcher = Dispatcher(fleet)
-        outcome = await active_planner.run(mission.instruction, mission.robot_id, dispatcher)
-        mission.steps = dispatcher.steps
-        mission.language = outcome.language
-        mission.final_text = outcome.final_text
-        mission.status = outcome.status
-        mission.finished_at = datetime.now(UTC)
+        await _execute_mission(mission, active_planner, fleet)
 
     @app.get("/v1/missions/{mission_id}", response_model=None)
     async def get_mission(mission_id: str) -> dict[str, object] | JSONResponse:
