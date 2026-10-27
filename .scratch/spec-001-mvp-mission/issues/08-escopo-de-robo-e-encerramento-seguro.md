@@ -20,7 +20,7 @@
 - 2026-10-26 (ticket 06), **prioridade**: hoje uma exceção na execução da missão (`FleetBackendError`, erro de conexão, `ExecutorTimeout`) escapa da tarefa em segundo plano e a missão fica em `running` para sempre. Cobrir com `failed` (backend) e `incomplete` (tempo) conforme a SPEC-001.
 
 - 2026-10-27 (implementação), **riscos restantes**:
-  - Com escopo no tb1, uma instrução que cita outro robô (inclusive um desconhecido, como "tb9") é executada no tb1, sem acusar o robô citado; o texto final começa por "Missão restrita ao tb1". É a semântica estrutural pedida; o `robot_id` do escopo ainda não é validado (ticket 09).
+  - Com escopo no tb1, uma instrução que cita outro robô (inclusive um desconhecido, como "tb9") é executada no tb1, sem acusar o robô citado; o texto final começa por "Missão restrita ao tb1". É a semântica estrutural pedida; o `robot_id` do escopo ainda não é validado (ticket 09). **Será corrigido no ticket 09**: o planejador determinístico passa a recusar o conflito com `not_understood` (SPEC-001, "Conflito de escopo"), mantendo a reescrita no despachante.
   - O tempo total de uma missão pode passar do tempo máximo em até o prazo de confirmação do cancelamento (`cancel_grace`, 5 s por padrão); o cancelamento inteiro (leitura, POST e verificação) fica sob esse prazo.
   - Se o prazo do Executor for menor que o tempo restante da missão, vale o `ExecutorTimeout` do ticket 13: `incomplete` sem cancelamento.
   - Só a navegação enviada pela própria missão é cancelada no tempo máximo; uma navegação iniciada por outro cliente não é tocada.

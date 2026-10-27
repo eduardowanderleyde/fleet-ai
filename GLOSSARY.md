@@ -36,6 +36,9 @@ _Avoid_: comando
 **Escopo de robô**:
 A restrição de uma missão a um único robô, que nenhum passo pode contornar.
 
+**Conflito de escopo**:
+Uma instrução que cita um robô diferente do robô do escopo da missão; a missão é recusada em vez de executada no robô do escopo.
+
 **LLM roteirizado**:
 Um modelo de linguagem de mentira, que devolve respostas fixas, usado para testar o planejador LLM sem rede nem custo.
 _Avoid_: mock do Claude

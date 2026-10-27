@@ -4,7 +4,7 @@
 **Aprovada em:** 2026-10-26 (revisada no mesmo dia: sem APIs pagas, ADR-0004; contrato normalizado e navegação assíncrona, ADR-0005)
 **Referência de código:** `fleet-ui@a57a3b1` (ver ADR-0001)
 **Decisões relacionadas:** ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005
-**Revisões:** 2026-10-27, encerramento garantido de missões (ticket 13)
+**Revisões:** 2026-10-27, encerramento garantido de missões (ticket 13); conflito de escopo no planejador determinístico (ticket 09)
 
 ## Problem Statement
 
@@ -56,6 +56,7 @@ O sistema inteiro sobe e passa nos testes **sem nenhuma chave de API**.
 17. Como dono, quero limitar quantas missões rodam ao mesmo tempo e quanto tempo cada uma pode durar.
 18. Como pesquisador, quero apontar o Fleet AI para o Fleet UI real só trocando a configuração do adaptador de frota.
 19. Como pesquisador, quero restringir uma missão a um único robô, de forma estrutural, para que nenhuma instrução comande outro robô.
+19a. Como visitante, quero que uma instrução que cita um robô diferente do escopo da missão seja recusada com a explicação do conflito, em vez de executada silenciosamente no robô do escopo, para que a ação nunca divirja do que eu pedi.
 20. Como pesquisador, quero que o SimFleet carregue um cenário (mapa, resolução, origem, robôs com papel, apelidos e pose inicial, e lugares nomeados), para reproduzir o ambiente do warehouse.
 21. Como pesquisador, quero que a mesma instrução no mesmo cenário produza sempre o mesmo plano e as mesmas poses, para depurar e comparar.
 22. Como desenvolvedor, quero testar as intenções do planejador determinístico com uma tabela de casos (instrução → plano esperado) em português e inglês.
@@ -103,6 +104,7 @@ O sistema inteiro sobe e passa nos testes **sem nenhuma chave de API**.
 - **Falha de navegação** (destino inválido ou abortado): o `move_robot` é aceito e a falha aparece no resultado do `wait_for_arrival` (`nav_state: failed`, `last_error`); a missão termina `completed` com o texto final explicando a falha.
 - Em todos os casos a missão foi entendida e executada até onde o backend permitiu; por isso o status é `completed`, e o sucesso ou a falha da ação ficam no texto final e nos passos.
 - **Cancelar:** o texto final reflete o resultado do cancelamento; só diz que a navegação foi cancelada com `confirmed`. Com `ambiguous`, diz que o robô parou mas que não é possível afirmar que foi pelo cancelamento; com `not_confirmed`, diz que o robô continua navegando.
+- **Conflito de escopo** (ticket 09): numa missão com `robot_id` de escopo, se a instrução cita explicitamente **outro** robô (pelo id, por um apelido de outro robô do cenário ou por uma referência com cara de robô fora do cenário, como "tb9"), o planejador determinístico recusa com `not_understood`, explica o conflito (robô citado × robô do escopo) e não chama nenhuma ferramenta. Se a instrução cita o próprio robô do escopo (por id ou apelido), ou não cita robô nenhum, a missão segue com o robô do escopo. A reescrita estrutural do `robot_id` no despachante continua valendo para qualquer planejador: o conflito é uma recusa a mais do planejador determinístico, não substitui a garantia do despachante.
 - O planejador determinístico não faz chamadas de rede além do despachante e não tem aleatoriedade.
 
 ### Planejador LLM (desligado por padrão)
@@ -235,5 +237,6 @@ Duas imagens, usuário não-root, healthcheck, limite de memória. No Compose lo
 
 - A demo pública deve dizer que o planejamento é determinístico (por regras) e que a simulação é 2D cinemática, não Gazebo. Não chamar o planejador determinístico de "IA" na interface.
 - O planejador LLM existe na SPEC-001 só para manter o loop do `fleet-ui` portado, testado e pronto; ligá-lo com um modelo real exige a spec futura.
+- Antes de integrar robôs reais (adaptador `fleet_ui` em uso), revisar a política de `ExecutorTimeout` e de cancelamento verificado: ver ADR-0006 (proposto). A SPEC-001 mantém `ExecutorTimeout` → `incomplete` sem cancelamento.
 - A brecha de escopo por `run_id` do `fleet-ui` não se aplica: nenhuma ferramenta do MVP recebe `run_id`.
 - O Fleet UI de referência expõe `/api/*` sem autenticação; usar o adaptador `fleet_ui` fora de uma rede confiável não é suportado.
