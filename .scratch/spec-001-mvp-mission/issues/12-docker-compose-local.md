@@ -7,8 +7,12 @@
 **Status:** ready-for-agent
 
 - [ ] Duas imagens com usuário não-root e sistema de arquivos somente leitura
-- [ ] Healthchecks dos dois serviços usam os endpoints `/health`; o Fleet AI só sobe depois do SimFleet saudável
+- [ ] Healthchecks de liveness: o Fleet AI usa `/health/live` (nunca a readiness, para não reiniciar o container quando o backend de frota cai) e o SimFleet usa `/health`; o Fleet AI só sobe depois do SimFleet saudável
 - [ ] SimFleet sem porta publicada; Fleet AI publicado em `127.0.0.1`, porta configurável
 - [ ] Limites de memória definidos; o SimFleet com o warehouse fica abaixo de 256 MB
 - [ ] O Compose não declara nenhuma variável de chave de API
 - [ ] Roteiro documentado de verificação: subir, criar a missão "leve o tb1 até a doca de carga", ver `completed`, derrubar
+
+## Comments
+
+- 2026-10-27 (ticket 11): definir como o proxy reverso trata `/health` (readiness, pode responder 503) e `/health/live`; uma indisponibilidade temporária do backend de frota não pode derrubar o acesso à interface web nem à consulta do histórico de missões.

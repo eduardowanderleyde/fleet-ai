@@ -4,7 +4,7 @@
 **Aprovada em:** 2026-10-26 (revisada no mesmo dia: sem APIs pagas, ADR-0004; contrato normalizado e navegação assíncrona, ADR-0005)
 **Referência de código:** `fleet-ui@a57a3b1` (ver ADR-0001)
 **Decisões relacionadas:** ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005
-**Revisões:** 2026-10-27, encerramento garantido de missões (ticket 13); conflito de escopo no planejador determinístico (ticket 09); retenção segura e limpeza do limitador de taxa (ticket 14)
+**Revisões:** 2026-10-27, encerramento garantido de missões (ticket 13); conflito de escopo no planejador determinístico (ticket 09); retenção segura e limpeza do limitador de taxa (ticket 14); seleção do adaptador de frota, liveness e readiness (ticket 11)
 
 ## Problem Statement
 
@@ -66,6 +66,7 @@ O sistema inteiro sobe e passa nos testes **sem nenhuma chave de API**.
 25a. Como operador, quero a causa detalhada de cada navegação falhada (destino ocupado, fora do mapa, sem caminho) num log estruturado do SimFleet, já que o contrato só carrega o código de erro.
 26. Como desenvolvedor, quero que, no planejador LLM, o limite de turnos termine a missão como `incomplete` com os passos preservados.
 27. Como operador, quero endpoints de health nos dois serviços, informando o adaptador de frota, se o backend responde e o planejador ativo.
+27a. Como operador, quero distinguir o processo vivo (liveness) do serviço pronto para missões (readiness), para que uma indisponibilidade do backend de frota não reinicie o Fleet AI nem esconda o histórico de missões.
 28. Como operador, quero subir Fleet AI e SimFleet localmente com Docker Compose, com o SimFleet sem porta publicada.
 29. Como operador, quero logs estruturados com `mission_id`.
 
@@ -170,7 +171,8 @@ Mesmos caminhos e parâmetros do `fleet-ui@a57a3b1`. Consultas sem mudança de f
 - `GET /v1/missions/{mission_id}` → `{"mission_id", "status", "instruction", "robot_id", "planner", "language", "steps": [{"tool", "input", "result", "is_error"}], "final_text", "created_at", "finished_at"}`
 - Status: `running`, `completed`, `not_understood`, `incomplete` (tempo máximo da missão, navegação que não terminou no prazo do Executor (`ExecutorTimeout`) ou, no planejador LLM, limite de turnos), `failed` (erro interno, cancelamento da tarefa ou backend de frota indisponível). `running` é o único status não terminal. `rejected` fica reservado e não é usado na SPEC-001: as guardas recusam com 422 ou 429 sem criar missão (ticket 09).
 - Recusas: `422` entrada inválida (`invalid_request`: corpo malformado, instrução vazia ou longa demais, `robot_id` fora do formato `[A-Za-z0-9_-]{1,32}`), `429` taxa (`rate_limited`) ou concorrência (`too_many_missions`), com `Retry-After` em segundos. Corpo `{"error": <código>, "message": <texto>}`. `503` capacidade de retenção esgotada (`capacity_exhausted`), com `Retry-After` em segundos; esse valor é uma estimativa, não garantia de que haverá capacidade nesse momento. Uma recusa não cria missão, não devolve `mission_id`, não chega a planejar e não gasta cota de taxa.
-- `GET /health` → `{"status", "fleet_adapter", "fleet_backend_reachable", "planner", "llm_enabled"}`
+- `GET /health/live` (liveness) → sempre `200 {"status": "alive"}` enquanto o processo responde; nunca consulta o backend de frota.
+- `GET /health` (readiness) → `{"status", "fleet_adapter", "fleet_backend_reachable", "planner", "llm_enabled"}`: `200` com `status: "ok"` quando o backend respondeu de forma válida; `503` com `status: "degraded"` quando está indisponível, lento ou fora do contrato. Detalhes na seção "Seleção do adaptador e health".
 - Missões ficam em memória no MVP, com no máximo N missões retidas; só missões terminais são descartadas (ver Guardas).
 
 ### Encerramento garantido da missão (ticket 13)
@@ -205,9 +207,20 @@ Mesmos caminhos e parâmetros do `fleet-ui@a57a3b1`. Consultas sem mudança de f
 
 Por ambiente: adaptador de frota (`sim` ou `fleet_ui`) e URL do backend; caminho do cenário; planejador (`deterministic`, padrão, ou `llm`); adaptador de LLM (só `scripted` na SPEC-001) e caminho do roteiro; limites acima; proxies confiáveis. Nenhuma variável de chave de API existe na SPEC-001.
 
+### Seleção do adaptador e health (ticket 11)
+
+- **Seleção:** `FLEET_AI_FLEET_ADAPTER` aceita só `sim` (padrão) e `fleet_ui`; outro valor impede o serviço de subir. `FLEET_AI_FLEET_URL` tem padrão `http://localhost:8001` com `sim` e é **obrigatória** com `fleet_ui`.
+- **Validação da URL na inicialização, sem nenhuma chamada de rede:** esquema `http` ou `https`, host presente, porta válida se houver; recusadas URLs com credenciais (`usuario:senha@`), parâmetros de consulta (`?`), fragmento (`#`) ou parâmetros de caminho (`;`). Um caminho base é permitido (por exemplo, atrás de um proxy). A disponibilidade do backend só é verificada pela sondagem de readiness.
+- **Inicialização:** o serviço sobe mesmo com o backend fora do ar; só erro de configuração impede a subida. Com o backend fora do ar, as missões terminam `failed` (`backend_unavailable`, ticket 13) e o serviço se recupera sozinho quando o backend volta.
+- **Sondagem de readiness:** `GET /api/list_robots` pelo adaptador ativo, com prazo de 2 s; só uma resposta válida do contrato dentro do prazo conta como acessível. Conexão recusada, timeout, 5xx ou corpo fora do contrato dão `fleet_backend_reachable: false`.
+- **Cache e sondagem única:** o resultado vale por 5 s. Uma única sondagem por aplicação fica em andamento por vez: requisições simultâneas, inclusive logo depois de o cache expirar, aguardam a mesma sondagem em vez de dispararem outras; a espera é assíncrona, sem bloquear o event loop, e o cancelamento de uma requisição não cancela a sondagem compartilhada.
+- **Sem vazamento:** o corpo do `/health` tem só os cinco campos acima; nunca URL, host, porta, credenciais, mensagens de erro, texto de exceção, versão do backend ou lista de robôs. O motivo de uma sondagem falhada vai para um log estruturado com o adaptador e o tipo do erro.
+- **Alcance da readiness:** ela verifica que o backend está acessível e cumpre o contrato básico; **não** certifica que um robô físico esteja apto ou seguro para navegar.
+- **Docker e proxy (ticket 12):** o healthcheck de liveness do container usa `/health/live`, para que uma queda do Fleet UI não reinicie o Fleet AI; o proxy reverso não deve usar a readiness para cortar o acesso à interface web nem à consulta do histórico de missões.
+
 ### Docker
 
-Duas imagens, usuário não-root, healthcheck, limite de memória. No Compose local, só o Fleet AI publica porta (em `127.0.0.1`); o SimFleet fica na rede interna.
+Duas imagens, usuário não-root, healthcheck de liveness (`/health/live` no Fleet AI), limite de memória. No Compose local, só o Fleet AI publica porta (em `127.0.0.1`); o SimFleet fica na rede interna.
 
 ## Testing Decisions
 
