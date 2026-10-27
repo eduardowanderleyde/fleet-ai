@@ -44,8 +44,8 @@ Fora deste ticket: orçamento de tokens e custos (ADR-0004) e a política de `Ex
 
 - 2026-10-27: acrescentado o conflito de escopo a pedido do dono, depois da revisão do ticket 08. Antes, a missão com escopo `tb1` e instrução "leve o tb2…" era executada no tb1 em silêncio (risco registrado no ticket 08).
 - 2026-10-27 (implementação), **riscos restantes**:
-  - O limitador de taxa guarda, por IP, os instantes das missões aceitas nas últimas 24 h; um IP que não volta nunca sai da memória. Com muitos endereços distintos (por exemplo IPv6, ou `X-Forwarded-For` atrás de um proxy confiável mal configurado), o consumo cresce sem limite. Resolver com uma varredura periódica ou um teto de IPs antes do deploy público.
+  - O limitador de taxa guarda, por IP, os instantes das missões aceitas nas últimas 24 h; um IP que não volta nunca sai da memória. Com muitos endereços distintos (por exemplo IPv6, ou `X-Forwarded-For` atrás de um proxy confiável mal configurado), o consumo cresce sem limite. Resolver com uma varredura periódica ou um teto de IPs antes do deploy público. **Tratado no ticket 14** (limpeza oportunista; consultar não cria registro), sem teto absoluto.
   - Requisições inválidas (422) não gastam cota: não planejam nada, mas são ilimitadas. O proxy reverso do deploy pode limitar a taxa bruta.
   - Taxa, concorrência e retenção vivem em memória de um processo; com mais de um processo ou réplica, cada um conta sozinho (Redis fica para a spec de deploy).
-  - Uma missão ainda rodando pode ser descartada pela retenção e passar a dar 404 no `GET`, embora termine normalmente.
+  - Uma missão ainda rodando pode ser descartada pela retenção e passar a dar 404 no `GET`, embora termine normalmente. **Tratado no ticket 14** (retenção segura).
   - O status `rejected` fica reservado e não é usado (SPEC-001 ajustada).

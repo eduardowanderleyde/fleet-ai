@@ -4,7 +4,7 @@
 **Aprovada em:** 2026-10-26 (revisada no mesmo dia: sem APIs pagas, ADR-0004; contrato normalizado e navegação assíncrona, ADR-0005)
 **Referência de código:** `fleet-ui@a57a3b1` (ver ADR-0001)
 **Decisões relacionadas:** ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005
-**Revisões:** 2026-10-27, encerramento garantido de missões (ticket 13); conflito de escopo no planejador determinístico (ticket 09)
+**Revisões:** 2026-10-27, encerramento garantido de missões (ticket 13); conflito de escopo no planejador determinístico (ticket 09); retenção segura e limpeza do limitador de taxa (ticket 14)
 
 ## Problem Statement
 
@@ -169,9 +169,9 @@ Mesmos caminhos e parâmetros do `fleet-ui@a57a3b1`. Consultas sem mudança de f
 - `POST /v1/missions` com `{"instruction": str, "robot_id": str | null}` → `202 {"mission_id": str, "status": "running"}`. A missão roda em segundo plano.
 - `GET /v1/missions/{mission_id}` → `{"mission_id", "status", "instruction", "robot_id", "planner", "language", "steps": [{"tool", "input", "result", "is_error"}], "final_text", "created_at", "finished_at"}`
 - Status: `running`, `completed`, `not_understood`, `incomplete` (tempo máximo da missão, navegação que não terminou no prazo do Executor (`ExecutorTimeout`) ou, no planejador LLM, limite de turnos), `failed` (erro interno, cancelamento da tarefa ou backend de frota indisponível). `running` é o único status não terminal. `rejected` fica reservado e não é usado na SPEC-001: as guardas recusam com 422 ou 429 sem criar missão (ticket 09).
-- Recusas: `422` entrada inválida (`invalid_request`: corpo malformado, instrução vazia ou longa demais, `robot_id` fora do formato `[A-Za-z0-9_-]{1,32}`), `429` taxa (`rate_limited`) ou concorrência (`too_many_missions`), com `Retry-After` em segundos. Corpo `{"error": <código>, "message": <texto>}`. Uma recusa não cria missão nem chega a planejar.
+- Recusas: `422` entrada inválida (`invalid_request`: corpo malformado, instrução vazia ou longa demais, `robot_id` fora do formato `[A-Za-z0-9_-]{1,32}`), `429` taxa (`rate_limited`) ou concorrência (`too_many_missions`), com `Retry-After` em segundos. Corpo `{"error": <código>, "message": <texto>}`. `503` capacidade de retenção esgotada (`capacity_exhausted`), com `Retry-After` em segundos; esse valor é uma estimativa, não garantia de que haverá capacidade nesse momento. Uma recusa não cria missão, não devolve `mission_id`, não chega a planejar e não gasta cota de taxa.
 - `GET /health` → `{"status", "fleet_adapter", "fleet_backend_reachable", "planner", "llm_enabled"}`
-- Missões ficam em memória no MVP, com no máximo N missões retidas (as mais antigas são descartadas).
+- Missões ficam em memória no MVP, com no máximo N missões retidas; só missões terminais são descartadas (ver Guardas).
 
 ### Encerramento garantido da missão (ticket 13)
 
@@ -196,7 +196,9 @@ Mesmos caminhos e parâmetros do `fleet-ui@a57a3b1`. Consultas sem mudança de f
 
 - O IP do cliente vem da conexão; `X-Forwarded-For` só é usado se a conexão vier de um proxy confiável configurado, e então vale o endereço mais à direita que não é de um proxy confiável.
 - Rate limit e concorrência em memória (um processo). A taxa usa janelas deslizantes de 60 s e de 24 h e só conta missões aceitas; uma recusa por concorrência não gasta cota.
-- Acima do teto de missões retidas, a mais antiga sai da memória (mesmo se ainda estiver rodando; ela termina normalmente, mas o `GET` dela passa a dar 404).
+- **Limpeza do limitador** (ticket 14): o limitador só guarda IPs com missão aceita nas últimas 24 h; consultar um IP não cria registro. Registros com mais de 24 h são removidos de forma oportunista nas próprias chamadas do limitador (no máximo uma varredura completa por minuto do relógio), sem tarefa periódica. A limpeza não altera os limites por minuto e por dia de quem ainda tem missões nas janelas. Isso remove registros obsoletos, **mas não estabelece um teto absoluto de memória**: muitos IPs distintos com missões nas últimas 24 h continuam guardados. O limite de taxa bruto no proxy reverso é pré-requisito do deploy público.
+- **Retenção segura** (ticket 14): acima do teto de missões retidas, sai a missão **terminal** mais antiga; missões `running` nunca são descartadas. Quando a retenção estiver cheia e não existir missão terminal elegível para descarte, a criação é recusada com `503 capacity_exhausted`.
+- **Admissão atômica** (ticket 14): as decisões de admissão (validação, taxa, concorrência, capacidade, registro na cota e inserção da missão) acontecem sem pausa assíncrona entre a checagem e a inserção. A garantia vale para um processo com um event loop; com mais de um processo ou réplica, cada um decide sozinho.
 - Variáveis de ambiente: `FLEET_AI_MAX_INSTRUCTION_CHARS`, `FLEET_AI_MISSIONS_PER_MINUTE`, `FLEET_AI_MISSIONS_PER_DAY`, `FLEET_AI_MAX_CONCURRENT`, `FLEET_AI_MISSIONS_RETAINED`, `FLEET_AI_MISSION_TIMEOUT`, `FLEET_AI_CANCEL_GRACE` e `FLEET_AI_TRUSTED_PROXIES` (lista separada por vírgula). Valor inválido impede o serviço de subir.
 
 ### Configuração
@@ -234,6 +236,8 @@ Duas imagens, usuário não-root, healthcheck, limite de memória. No Compose lo
 - Qualquer alteração no repositório `fleet-ui`.
 
 ## Further Notes
+
+- Antes do deploy público na VPS: limite de taxa bruto no proxy reverso (inclusive para requisições inválidas, que não gastam cota) e, se necessário, um teto absoluto de IPs rastreados; o ticket 14 só remove registros expirados.
 
 - O timeout do Executor (padrão 120 s) é maior que o tempo máximo da missão (60 s, tabela de guardas). Resolvido no ticket 08: a missão inteira roda sob o tempo máximo, então nenhuma espera do Executor passa dele; ao estourar, a navegação em curso enviada pela missão é cancelada com verificação (prazo de 5 s para confirmar) e a missão termina `incomplete`, com o texto relatando só o resultado do cancelamento. Se o prazo do Executor for menor que o tempo restante, vale o `ExecutorTimeout` (ticket 13, sem cancelamento).
 
