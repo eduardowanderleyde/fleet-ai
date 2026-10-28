@@ -4,7 +4,7 @@
 **Aprovada em:** 2026-10-26 (revisada no mesmo dia: sem APIs pagas, ADR-0004; contrato normalizado e navegação assíncrona, ADR-0005)
 **Referência de código:** `fleet-ui@a57a3b1` (ver ADR-0001)
 **Decisões relacionadas:** ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005
-**Revisões:** 2026-10-27, encerramento garantido de missões (ticket 13); conflito de escopo no planejador determinístico (ticket 09); retenção segura e limpeza do limitador de taxa (ticket 14); seleção do adaptador de frota, liveness e readiness (ticket 11)
+**Revisões:** 2026-10-27, encerramento garantido de missões (ticket 13); conflito de escopo no planejador determinístico (ticket 09), depois antes de qualquer planejador (ticket 10); retenção segura e limpeza do limitador de taxa (ticket 14); seleção do adaptador de frota, liveness e readiness (ticket 11)
 
 ## Problem Statement
 
@@ -105,15 +105,19 @@ O sistema inteiro sobe e passa nos testes **sem nenhuma chave de API**.
 - **Falha de navegação** (destino inválido ou abortado): o `move_robot` é aceito e a falha aparece no resultado do `wait_for_arrival` (`nav_state: failed`, `last_error`); a missão termina `completed` com o texto final explicando a falha.
 - Em todos os casos a missão foi entendida e executada até onde o backend permitiu; por isso o status é `completed`, e o sucesso ou a falha da ação ficam no texto final e nos passos.
 - **Cancelar:** o texto final reflete o resultado do cancelamento; só diz que a navegação foi cancelada com `confirmed`. Com `ambiguous`, diz que o robô parou mas que não é possível afirmar que foi pelo cancelamento; com `not_confirmed`, diz que o robô continua navegando.
-- **Conflito de escopo** (ticket 09): numa missão com `robot_id` de escopo, se a instrução cita explicitamente **outro** robô (pelo id, por um apelido de outro robô do cenário ou por uma referência com cara de robô fora do cenário, como "tb9"), o planejador determinístico recusa com `not_understood`, explica o conflito (robô citado × robô do escopo) e não chama nenhuma ferramenta. Se a instrução cita o próprio robô do escopo (por id ou apelido), ou não cita robô nenhum, a missão segue com o robô do escopo. A reescrita estrutural do `robot_id` no despachante continua valendo para qualquer planejador: o conflito é uma recusa a mais do planejador determinístico, não substitui a garantia do despachante. O escopo vale só dentro da missão: a ferramenta `list_robots` e os endpoints de leitura da frota no backend (`/api/status`, `/api/list_robots`) não são restritos por ele.
+- **Conflito de escopo** (ticket 09): numa missão com `robot_id` de escopo, se a instrução cita explicitamente **outro** robô (pelo id, por um apelido de outro robô do cenário ou por uma referência com cara de robô fora do cenário, como "tb9"), a missão é recusada com `not_understood` **antes de chamar qualquer planejador** (determinístico ou LLM): o texto explica o conflito (robô citado × robô do escopo), nenhum planejador nem LLM é chamado e nenhuma ferramenta é executada. Se a instrução cita o próprio robô do escopo (por id ou apelido), ou não cita robô nenhum, a missão segue com o robô do escopo. A reescrita estrutural do `robot_id` no despachante continua valendo para qualquer planejador: a recusa por conflito é uma verificação a mais, comum aos dois planejadores, e não substitui a garantia do despachante. O escopo vale só dentro da missão: a ferramenta `list_robots` e os endpoints de leitura da frota no backend (`/api/status`, `/api/list_robots`) não são restritos por ele.
 - O planejador determinístico não faz chamadas de rede além do despachante e não tem aleatoriedade.
 
 ### Planejador LLM (desligado por padrão)
 
 - Mantém as regras de sistema do `fleet-ui` (nunca inventar robôs ou valores, conferir estado antes de mover, resumir no fim) e acrescenta "aguardar a chegada antes de declarar sucesso" e "responder no idioma da instrução".
-- Limite de turnos e de tokens de saída por chamada, configuráveis; ao atingir o limite de turnos, a missão termina `incomplete` com os passos preservados.
-- Erro de ferramenta volta ao modelo como resultado de erro.
-- Só é ativado com configuração explícita do planejador `llm`. Na SPEC-001, o único adaptador de LLM aceito é o roteirizado; qualquer outro valor impede o serviço de subir.
+- Depende de uma porta de LLM (sistema, mensagens, ferramentas, limite de tokens de saída → blocos `text`/`tool_use`, motivo de parada, uso fictício). O uso não entra na missão nem em orçamento (ADR-0004). Recebe exatamente as cinco ferramentas do despachante, e toda execução passa por ele (passos, escopo e erros iguais aos do determinístico).
+- Limites, configuráveis: **8 turnos** por missão (um turno é uma chamada ao LLM), **4 chamadas de ferramenta executadas por turno** e tokens de saída por chamada (só parâmetro da chamada, sem orçamento). Ao atingir o limite de turnos, a missão termina `incomplete` com os passos preservados. Chamadas acima de 4 na mesma resposta recebem `tool_result` com `is_error` e **nunca chegam ao despachante**. O tempo máximo da missão vale para o loop inteiro.
+- Erros voltam ao modelo como `tool_result` com `is_error` e são **sanitizados**: o modelo recebe só o `error_code` e mensagens controladas pelo Fleet AI, nunca mensagens brutas do backend nem exceções internas. Viram `tool_result` de erro, sem executar: ferramenta desconhecida, `input` fora do schema da ferramenta, chamada excedente no turno; e as recusas da frota (`CommandRefused`).
+- Não voltam ao modelo e encerram a missão como no determinístico: backend indisponível (`FleetBackendError`) → `failed`; `ExecutorTimeout` → `incomplete` sem cancelamento (política do ADR-0006 preservada); exceção do LLM, roteiro esgotado, motivo de parada desconhecido ou `tool_use` sem blocos → `failed`; `max_tokens` → `incomplete`. `CancelledError` propaga (o tempo máximo da missão age como hoje); `BaseException` não é capturada.
+- Resposta final com navegação ativa: se o LLM responde com texto enquanto uma navegação iniciada pela missão ainda está ativa (sem `wait_for_arrival` que a encerre), a missão termina `incomplete`; o texto informa que a navegação pode continuar e que não houve cancelamento confirmado. Não há cancelamento automático neste caso (ADR-0006).
+- Só é ativado com configuração explícita do planejador `llm`. Na SPEC-001, o único adaptador de LLM aceito é o roteirizado, **injetado no `create_app`** (testes); não há variável de roteiro nem suporte a modelos reais. `FLEET_AI_PLANNER=llm` sem LLM injetado, `FLEET_AI_LLM_ADAPTER` diferente de `scripted` ou planejador desconhecido impedem o serviço de subir com erro explícito.
+- No `/health`, `planner` informa `llm` e `llm_enabled` continua `false` com o roteirizado (não é um modelo real).
 
 ### Ferramentas do MVP
 
@@ -195,6 +199,7 @@ Mesmos caminhos e parâmetros do `fleet-ui@a57a3b1`. Consultas sem mudança de f
 | Prazo para confirmar o cancelamento depois do tempo máximo | 5 s |
 | Missões retidas em memória | 500 |
 | Turnos do planejador LLM por missão | 8 |
+| Chamadas de ferramenta executadas por turno do planejador LLM | 4 |
 
 - O IP do cliente vem da conexão; `X-Forwarded-For` só é usado se a conexão vier de um proxy confiável configurado, e então vale o endereço mais à direita que não é de um proxy confiável.
 - Rate limit e concorrência em memória (um processo). A taxa usa janelas deslizantes de 60 s e de 24 h e só conta missões aceitas; uma recusa por concorrência não gasta cota.
@@ -205,7 +210,7 @@ Mesmos caminhos e parâmetros do `fleet-ui@a57a3b1`. Consultas sem mudança de f
 
 ### Configuração
 
-Por ambiente: adaptador de frota (`sim` ou `fleet_ui`) e URL do backend; caminho do cenário; planejador (`deterministic`, padrão, ou `llm`); adaptador de LLM (só `scripted` na SPEC-001) e caminho do roteiro; limites acima; proxies confiáveis. Nenhuma variável de chave de API existe na SPEC-001.
+Por ambiente: adaptador de frota (`sim` ou `fleet_ui`) e URL do backend; caminho do cenário; planejador (`deterministic`, padrão, ou `llm`); adaptador de LLM (só `scripted` na SPEC-001; o roteiro é injetado no `create_app`, sem variável de ambiente); limites acima; proxies confiáveis. Nenhuma variável de chave de API existe na SPEC-001.
 
 ### Seleção do adaptador e health (ticket 11)
 
