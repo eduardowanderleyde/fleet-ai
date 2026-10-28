@@ -257,6 +257,8 @@ Duas imagens, usuário não-root, healthcheck de liveness (`/health/live` no Fle
 
 - Antes do deploy público na VPS: limite de taxa bruto no proxy reverso (inclusive para requisições inválidas, que não gastam cota) e, se necessário, um teto absoluto de IPs rastreados; o ticket 14 só remove registros expirados.
 
+- Antes de expor a API publicamente (fora de `127.0.0.1`): o ticket 15 deve estar concluído, para que nenhum texto bruto do backend, de exceção interna ou do LLM sem limites apareça nas respostas públicas, em especial `GET /v1/missions/{mission_id}`.
+
 - O timeout do Executor (padrão 120 s) é maior que o tempo máximo da missão (60 s, tabela de guardas). Resolvido no ticket 08: a missão inteira roda sob o tempo máximo, então nenhuma espera do Executor passa dele; ao estourar, a navegação em curso enviada pela missão é cancelada com verificação (prazo de 5 s para confirmar) e a missão termina `incomplete`, com o texto relatando só o resultado do cancelamento. Se o prazo do Executor for menor que o tempo restante, vale o `ExecutorTimeout` (ticket 13, sem cancelamento).
 
 - A demo pública deve dizer que o planejamento é determinístico (por regras) e que a simulação é 2D cinemática, não Gazebo. Não chamar o planejador determinístico de "IA" na interface.
