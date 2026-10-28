@@ -138,7 +138,7 @@ nunca fica exposto a ele.
 ```
 
 O script imprime o comando do túnel. No seu computador:
-`ssh -L 8000:127.0.0.1:8000 <usuário>@<vps>` e depois `http://localhost:8000/`.
+`ssh -p <porta-ssh> -L 8000:127.0.0.1:8000 <usuário>@<ip-da-vps>` e depois `http://localhost:8000/`.
 **Não exponha a API publicamente** antes do ticket 15 (respostas públicas
 sanitizadas) e de um controle de acesso.
 

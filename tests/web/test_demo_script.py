@@ -13,5 +13,5 @@ def test_demo_script_binds_only_to_localhost() -> None:
     assert hosts == ["127.0.0.1", "127.0.0.1"]  # SimFleet e Fleet AI
     assert "0.0.0.0" not in script  # noqa: S104 - confere a ausência do bind público
     assert "FLEET_AI_FLEET_URL=http://127.0.0.1:" in script
-    assert "ssh -L" in script  # imprime o comando do túnel
+    assert "ssh -p <porta-ssh> -L" in script  # imprime o comando do túnel
     assert DEMO.stat().st_mode & 0o111  # executável

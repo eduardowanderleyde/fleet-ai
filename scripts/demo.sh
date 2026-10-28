@@ -16,7 +16,7 @@ trap 'kill "$SIMFLEET_PID" 2>/dev/null || true' EXIT
 echo
 echo "Fleet AI em http://127.0.0.1:${FLEET_AI_PORT}/ (SimFleet interno na porta ${SIMFLEET_PORT})."
 echo "No seu computador, abra o túnel e depois http://localhost:${FLEET_AI_PORT}/ :"
-echo "  ssh -L ${FLEET_AI_PORT}:127.0.0.1:${FLEET_AI_PORT} $(whoami)@$(hostname -f)"
+echo "  ssh -p <porta-ssh> -L ${FLEET_AI_PORT}:127.0.0.1:${FLEET_AI_PORT} $(whoami)@<ip-da-vps>"
 echo
 
 FLEET_AI_FLEET_URL=http://127.0.0.1:"$SIMFLEET_PORT" \
