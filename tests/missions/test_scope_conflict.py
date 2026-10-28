@@ -1,9 +1,11 @@
-"""Conflito de escopo no planejador determinístico (ticket 09; SPEC-001)."""
+"""Conflito de escopo, recusado antes de qualquer planejador (tickets 09 e 10; SPEC-001)."""
 
 import math
 
 import pytest
 
+from fleet_ai.planning import PlanOutcome
+from fleet_ai.tools import Dispatcher
 from tests.fleet_ai_client import mission_stack
 
 pytestmark = pytest.mark.anyio
@@ -70,3 +72,39 @@ async def test_instruction_without_a_robot_uses_the_scoped_robot() -> None:
     assert mission["status"] == "completed"
     assert [step["input"].get("robot_id") for step in mission["steps"]] == ["tb1"] * 3
     assert math.hypot(pose["x"] - 2.0, pose["y"] - 13.5) <= 0.05
+
+
+class SpyPlanner:
+    """Planejador de teste: registra as chamadas e não executa nada."""
+
+    name = "spy"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def run(
+        self, instruction: str, robot_id: str | None, dispatcher: Dispatcher
+    ) -> PlanOutcome:
+        self.calls += 1
+        return PlanOutcome("completed", "pt", "executado")
+
+
+async def test_scope_conflict_is_refused_before_the_planner_is_called() -> None:
+    spy = SpyPlanner()
+    async with mission_stack(planner=spy) as stack:
+        mission = await stack.run_mission("leve o tb2 até a doca de carga", robot_id="tb1")
+
+    assert spy.calls == 0
+    assert mission["status"] == "not_understood"
+    assert mission["steps"] == []
+    assert "tb2" in mission["final_text"] and "tb1" in mission["final_text"]
+    assert mission["language"] == "pt"
+
+
+async def test_no_conflict_reaches_the_planner() -> None:
+    spy = SpyPlanner()
+    async with mission_stack(planner=spy) as stack:
+        mission = await stack.run_mission("leve o tb1 até a doca de carga", robot_id="tb1")
+
+    assert spy.calls == 1
+    assert mission["status"] == "completed"

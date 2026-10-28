@@ -30,19 +30,19 @@ class Limits:
         defaults = cls()
         proxies = environ.get("FLEET_AI_TRUSTED_PROXIES", "")
         return cls(
-            max_instruction_chars=_positive_int(
+            max_instruction_chars=positive_int(
                 environ, "FLEET_AI_MAX_INSTRUCTION_CHARS", defaults.max_instruction_chars
             ),
-            missions_per_minute=_positive_int(
+            missions_per_minute=positive_int(
                 environ, "FLEET_AI_MISSIONS_PER_MINUTE", defaults.missions_per_minute
             ),
-            missions_per_day=_positive_int(
+            missions_per_day=positive_int(
                 environ, "FLEET_AI_MISSIONS_PER_DAY", defaults.missions_per_day
             ),
-            max_concurrent=_positive_int(
+            max_concurrent=positive_int(
                 environ, "FLEET_AI_MAX_CONCURRENT", defaults.max_concurrent
             ),
-            missions_retained=_positive_int(
+            missions_retained=positive_int(
                 environ, "FLEET_AI_MISSIONS_RETAINED", defaults.missions_retained
             ),
             trusted_proxies=frozenset(p.strip() for p in proxies.split(",") if p.strip()),
@@ -63,7 +63,8 @@ def positive_float(environ: Mapping[str, str], name: str, default: float) -> flo
     return value
 
 
-def _positive_int(environ: Mapping[str, str], name: str, default: int) -> int:
+def positive_int(environ: Mapping[str, str], name: str, default: int) -> int:
+    """Inteiro positivo de uma variável de ambiente, ou o padrão se ela não existe."""
     raw = environ.get(name)
     if raw is None:
         return default

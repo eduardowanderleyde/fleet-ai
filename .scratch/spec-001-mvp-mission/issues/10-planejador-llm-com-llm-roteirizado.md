@@ -4,22 +4,22 @@
 
 **Blocked by:** 08, 13
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Porta de LLM definida (sistema, mensagens, ferramentas, limite de tokens → blocos, motivo de parada, uso); LLM roteirizado registra o que recebeu e falha alto se o roteiro acabar
-- [ ] Planner portado cita arquivo e commit de origem; regras de sistema do `fleet-ui` mantidas, mais "aguardar chegada antes de declarar sucesso" e "responder no idioma da instrução"
-- [ ] Com planejador `llm` e o roteiro `list_robots` → `get_robot_status` → `move_robot` → `wait_for_arrival` → texto, a missão termina `completed` com 4 passos, `planner: "llm"` e o tb1 no destino
-- [ ] Erro de ferramenta volta ao modelo como `tool_result` com `is_error`, sanitizado: só `error_code` e mensagens do Fleet AI, nunca texto bruto do backend nem exceção interna
-- [ ] Roteiro que nunca para de pedir ferramentas → `incomplete` após o limite de turnos (padrão 8, configurável), com os passos preservados
-- [ ] No máximo 4 chamadas de ferramenta executadas por turno (configurável); as excedentes recebem `tool_result` com `is_error` e nunca chegam ao despachante
-- [ ] Ferramenta desconhecida e `input` fora do schema viram `tool_result` de erro sem executar, inclusive quando repetidos em vários turnos
-- [ ] Backend indisponível → `failed`; `ExecutorTimeout` → `incomplete` sem cancelamento (ADR-0006); exceção do LLM, roteiro esgotado ou resposta inválida → `failed`; `CancelledError` propaga
-- [ ] Resposta final com navegação da missão ainda ativa → `incomplete`, com texto dizendo que a navegação pode continuar e que não houve cancelamento confirmado; sem cancelamento automático
-- [ ] Conflito de escopo (instrução cita outro robô) recusado **antes de qualquer planejador**: nenhuma chamada ao LLM, nenhuma ferramenta executada
-- [ ] Escopo de robô do ticket 08 vale também aqui: reescrita estrutural do despachante (roteiro pede tb2 sem citar robô na instrução, passo registra tb1)
-- [ ] Configuração padrão → planejador determinístico; `llm` exige configuração explícita e LLM roteirizado injetado no `create_app`; sem LLM injetado, adaptador diferente de `scripted` ou planejador desconhecido → falha explícita na inicialização
-- [ ] `/health`: `planner: "llm"` e `llm_enabled: false` com o roteirizado
-- [ ] Nenhum SDK, chave ou chamada de rede além da frota: a missão LLM só faz chamadas registradas ao backend de frota
+- [x] Porta de LLM definida (sistema, mensagens, ferramentas, limite de tokens → blocos, motivo de parada, uso); LLM roteirizado registra o que recebeu e falha alto se o roteiro acabar
+- [x] Planner portado cita arquivo e commit de origem; regras de sistema do `fleet-ui` mantidas, mais "aguardar chegada antes de declarar sucesso" e "responder no idioma da instrução"
+- [x] Com planejador `llm` e o roteiro `list_robots` → `get_robot_status` → `move_robot` → `wait_for_arrival` → texto, a missão termina `completed` com 4 passos, `planner: "llm"` e o tb1 no destino
+- [x] Erro de ferramenta volta ao modelo como `tool_result` com `is_error`, sanitizado: só `error_code` e mensagens do Fleet AI, nunca texto bruto do backend nem exceção interna
+- [x] Roteiro que nunca para de pedir ferramentas → `incomplete` após o limite de turnos (padrão 8, configurável), com os passos preservados
+- [x] No máximo 4 chamadas de ferramenta executadas por turno (configurável); as excedentes recebem `tool_result` com `is_error` e nunca chegam ao despachante
+- [x] Ferramenta desconhecida e `input` fora do schema viram `tool_result` de erro sem executar, inclusive quando repetidos em vários turnos
+- [x] Backend indisponível → `failed`; `ExecutorTimeout` → `incomplete` sem cancelamento (ADR-0006); exceção do LLM, roteiro esgotado ou resposta inválida → `failed`; `CancelledError` propaga
+- [x] Resposta final com navegação da missão ainda ativa → `incomplete`, com texto dizendo que a navegação pode continuar e que não houve cancelamento confirmado; sem cancelamento automático
+- [x] Conflito de escopo (instrução cita outro robô) recusado **antes de qualquer planejador**: nenhuma chamada ao LLM, nenhuma ferramenta executada
+- [x] Escopo de robô do ticket 08 vale também aqui: reescrita estrutural do despachante (roteiro pede tb2 sem citar robô na instrução, passo registra tb1)
+- [x] Configuração padrão → planejador determinístico; `llm` exige configuração explícita e LLM roteirizado injetado no `create_app`; sem LLM injetado, adaptador diferente de `scripted` ou planejador desconhecido → falha explícita na inicialização
+- [x] `/health`: `planner: "llm"` e `llm_enabled: false` com o roteirizado
+- [x] Nenhum SDK, chave ou chamada de rede além da frota: a missão LLM só faz chamadas registradas ao backend de frota
 
 ## Testes previstos
 
@@ -45,3 +45,8 @@ Seam: API HTTP do Fleet AI em processo, com o LLM roteirizado injetado no `creat
 ## Comments
 
 - 2026-10-26 (ticket 06): o critério "despachante com as cinco ferramentas, nenhuma outra" do ticket 06 não é observável pela API com o planejador determinístico. Verificar aqui: as ferramentas que o LLM roteirizado recebe são exatamente `list_robots`, `get_robot_status`, `move_robot`, `wait_for_arrival`, `cancel_navigation`, e um `tool_use` com outro nome vira erro.
+- 2026-10-28 (implementação), **notas e riscos restantes**:
+  - O conflito de escopo agora é verificado antes de qualquer planejador (`ScopeGuard`). Efeito colateral: uma instrução com escopo que cita outro robô **e** pede duas ações passa a ser recusada pelo conflito, e não por "uma ação por missão". As duas respostas são `not_understood` sem ferramenta.
+  - O modelo recebe resultados sanitizados: recusas viram `error_code` com mensagem do Fleet AI; no estado do robô, `last_error` fora dos códigos do contrato vira `NAV_ERROR` e um `role` que não é identificador vira `UNKNOWN`. Os **passos da missão** continuam registrando a mensagem da recusa como antes (comportamento do despachante, comum aos dois planejadores, anterior a este ticket).
+  - A validação dos argumentos é própria (campos do schema, `robot_id` texto não vazio, números finitos), não um validador de JSON Schema completo; basta para as cinco ferramentas do MVP.
+  - O uso fictício de tokens existe na porta, mas nada o consome (ADR-0004).

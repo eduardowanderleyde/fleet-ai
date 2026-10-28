@@ -10,7 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from fleet_ai.config import fleet_adapter_from_env
+from fleet_ai.config import fleet_adapter_from_env, planner_from_env
 from fleet_ai.executor import Executor
 from fleet_ai.guards import (
     Limits,
@@ -21,6 +21,7 @@ from fleet_ai.guards import (
     robot_id_error,
 )
 from fleet_ai.health import PROBE_TIMEOUT, Readiness
+from fleet_ai.llm import LlmPort
 from fleet_ai.missions import (
     DEFAULT_CANCEL_GRACE,
     DEFAULT_MISSION_TIMEOUT,
@@ -28,7 +29,7 @@ from fleet_ai.missions import (
     Mission,
     _execute_mission,
 )
-from fleet_ai.planning import DeterministicPlanner, Planner
+from fleet_ai.planning import Planner, ScopeGuard
 from fleet_ai.scenario import load_names
 
 
@@ -47,6 +48,7 @@ def create_app(
     clock: Callable[[], float] = time.monotonic,
     fleet_transport: httpx2.AsyncBaseTransport | None = None,
     health_probe_timeout: float = PROBE_TIMEOUT,
+    llm: LlmPort | None = None,
 ) -> FastAPI:
     """Sem `executor`, o adaptador vem de FLEET_AI_FLEET_ADAPTER e FLEET_AI_FLEET_URL.
 
@@ -55,7 +57,9 @@ def create_app(
     (ou dos padrões da SPEC-001); um valor inválido impede o serviço de subir.
     """
     fleet = executor or Executor(fleet_adapter_from_env(os.environ, fleet_transport))
-    active_planner = planner or DeterministicPlanner(load_names())
+    names = load_names()
+    active_planner = planner or planner_from_env(os.environ, names, llm)
+    scope_guard = ScopeGuard(names)
     guard_limits = limits or Limits.from_env(os.environ)
     mission_timeout = mission_timeout or positive_float(
         os.environ, "FLEET_AI_MISSION_TIMEOUT", DEFAULT_MISSION_TIMEOUT
@@ -133,7 +137,12 @@ def create_app(
         nonlocal running
         try:
             await _execute_mission(
-                mission, active_planner, fleet, timeout=mission_timeout, cancel_grace=cancel_grace
+                mission,
+                active_planner,
+                fleet,
+                timeout=mission_timeout,
+                cancel_grace=cancel_grace,
+                scope_guard=scope_guard,
             )
         finally:
             running -= 1

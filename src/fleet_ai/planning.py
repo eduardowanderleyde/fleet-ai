@@ -13,7 +13,7 @@ from fleet_ai.language import Language, detect_language, normalize, words
 from fleet_ai.scenario import ScenarioNames
 from fleet_ai.tools import Dispatcher
 
-PlanStatus = Literal["completed", "not_understood"]
+PlanStatus = Literal["completed", "not_understood", "incomplete"]
 
 
 @dataclass(frozen=True)
@@ -82,11 +82,7 @@ class DeterministicPlanner:
     name = "deterministic"
 
     def __init__(self, names: ScenarioNames) -> None:
-        self._robots = {
-            normalize(alias): robot.robot_id
-            for robot in names.robots
-            for alias in (robot.robot_id, *robot.aliases)
-        }
+        self._robots = robot_aliases(names)
         self._places = {
             normalize(alias): Destination(place.name, place.x, place.y, place.yaw)
             for place in names.places
@@ -115,15 +111,9 @@ class DeterministicPlanner:
         intents = _intents(text)
         if _SEQUENCE.search(text) or len(intents) > 1 or len(places) + bool(coordinate) > 1:
             return self._not_understood("multiple_actions", language)
+        # O conflito de escopo já foi recusado antes do planejador (ScopeGuard).
         named = _find(text, self._robots)
         robot_like = _ROBOT_LIKE.search(text)
-        if robot_id is not None:
-            # Conflito de escopo: a instrução cita outro robô (SPEC-001). Nada é
-            # executado; o despachante continua forçando o escopo para qualquer planejador.
-            other = named if named is not None else (robot_like.group(0) if robot_like else None)
-            if other is not None and other != robot_id:
-                text_ = _SCOPE_CONFLICT[language].format(named=other, scope=robot_id)
-                return PlanOutcome("not_understood", language, text_)
         robot = robot_id or named
         if robot is None and robot_like:
             return self._not_understood("unknown_robot", language)
@@ -144,6 +134,44 @@ class DeterministicPlanner:
         names = {"unknown_robot": self._robot_names, "unknown_place": self._place_names}
         text = _NOT_UNDERSTOOD[reason][language].format(names=names.get(reason, ""))
         return PlanOutcome("not_understood", language, text)
+
+
+def robot_aliases(names: ScenarioNames) -> dict[str, str]:
+    """Id e apelidos normalizados de cada robô do cenário → id do robô."""
+    return {
+        normalize(alias): robot.robot_id
+        for robot in names.robots
+        for alias in (robot.robot_id, *robot.aliases)
+    }
+
+
+class ScopeGuard:
+    """Conflito de escopo (SPEC-001): recusado antes de chamar qualquer planejador.
+
+    Numa missão com escopo, uma instrução que cita outro robô (id, apelido de outro
+    robô do cenário ou referência com cara de robô fora dele, como "tb9") vira
+    `not_understood` sem chamar planejador, LLM ou ferramenta. A reescrita
+    estrutural do `robot_id` no despachante continua valendo para todos.
+    """
+
+    def __init__(self, names: ScenarioNames) -> None:
+        self._robots = robot_aliases(names)
+
+    def conflict(self, instruction: str, robot_id: str | None) -> PlanOutcome | None:
+        if robot_id is None:
+            return None
+        text = normalize(instruction)
+        named = _find(text, self._robots)
+        robot_like = _ROBOT_LIKE.search(text)
+        other = named if named is not None else (robot_like.group(0) if robot_like else None)
+        if other is None or other == robot_id:
+            return None
+        language = detect_language(instruction)
+        return PlanOutcome(
+            "not_understood",
+            language,
+            _SCOPE_CONFLICT[language].format(named=other, scope=robot_id),
+        )
 
 
 _SCOPE_CONFLICT: dict[Language, str] = {

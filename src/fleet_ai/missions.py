@@ -14,7 +14,7 @@ from fleet_ai.tools import Dispatcher
 
 if TYPE_CHECKING:
     from fleet_ai.executor import Executor
-    from fleet_ai.planning import Planner
+    from fleet_ai.planning import Planner, PlanOutcome, ScopeGuard
 
 log = logging.getLogger("fleet_ai.missions")
 
@@ -70,6 +70,7 @@ async def _execute_mission(
     *,
     timeout: float = DEFAULT_MISSION_TIMEOUT,
     cancel_grace: float = DEFAULT_CANCEL_GRACE,
+    scope_guard: "ScopeGuard | None" = None,
 ) -> None:
     """Executa a missão e garante um status terminal (SPEC-001, encerramento garantido).
 
@@ -80,6 +81,11 @@ async def _execute_mission(
     `KeyboardInterrupt` e `SystemExit` não são capturadas. Os passos ficam na
     missão desde o início, então sobrevivem à falha.
     """
+    conflict = scope_guard.conflict(mission.instruction, mission.robot_id) if scope_guard else None
+    if conflict is not None:
+        # Antes de qualquer planejador: nenhum planejador, LLM ou ferramenta é chamado.
+        _record_outcome(mission, conflict)
+        return
     dispatcher = Dispatcher(executor, steps=mission.steps, scope=mission.robot_id)
     deadline = asyncio.timeout(timeout)
     try:
@@ -103,10 +109,14 @@ async def _execute_mission(
             "mission %s crashed", mission.mission_id, extra={"mission_id": mission.mission_id}
         )
     else:
-        mission.language = outcome.language
-        mission.final_text = outcome.final_text
-        mission.status = outcome.status
-        mission.finished_at = datetime.now(UTC)
+        _record_outcome(mission, outcome)
+
+
+def _record_outcome(mission: Mission, outcome: "PlanOutcome") -> None:
+    mission.language = outcome.language
+    mission.final_text = outcome.final_text
+    mission.status = outcome.status
+    mission.finished_at = datetime.now(UTC)
 
 
 async def _stop_after_timeout(

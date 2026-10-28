@@ -17,6 +17,7 @@ from fleet_ai.adapters import FleetAdapter, FleetUiAdapter, SimAdapter
 from fleet_ai.app import create_app as create_fleet_ai
 from fleet_ai.executor import Executor
 from fleet_ai.guards import Limits
+from fleet_ai.llm import LlmPort
 from fleet_ai.planning import Planner
 from simfleet.app import create_app as create_simfleet
 from simfleet.clock import SteppingClock
@@ -71,6 +72,7 @@ async def mission_stack(
     cancel_grace: float = 5.0,
     limits: Limits | None = None,
     clock: Callable[[], float] = time.monotonic,
+    llm: LlmPort | None = None,
 ) -> AsyncIterator[Stack]:
     if fake_fleet_ui is not None:
         backend: httpx2.AsyncBaseTransport = httpx2.ASGITransport(
@@ -92,6 +94,7 @@ async def mission_stack(
         cancel_grace=cancel_grace,
         limits=limits,
         clock=clock,
+        llm=llm,
     )
     api = httpx2.ASGITransport(app=fleet_ai, client=("127.0.0.1", 50000))
     async with (
