@@ -1,6 +1,6 @@
 """O contrato de frota visto pelo Fleet AI (ADR-0005)."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal, get_args
 
 NavState = Literal["idle", "navigating", "failed"]
@@ -34,6 +34,18 @@ class RobotStatus:
     nav_state: NavState
     last_error: str
     pose: Pose
+
+
+@dataclass(frozen=True)
+class FleetMap:
+    """Mapa de ocupação do backend (formato do `GET /api/map` do Fleet UI), já validado."""
+
+    resolution: float  # metros por pixel
+    origin_x: float  # canto inferior esquerdo do mapa, em metros
+    origin_y: float
+    width: int  # pixels
+    height: int
+    png: bytes = field(repr=False)
 
 
 @dataclass(frozen=True)

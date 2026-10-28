@@ -8,13 +8,13 @@ com o modelo só pela porta de LLM e age na frota só pelo despachante.
 
 import json
 import math
-import re
 from typing import Any
 
 from fleet_ai.language import Language, detect_language
 from fleet_ai.llm import LlmPort, LlmResponse, TextBlock, ToolUseBlock
 from fleet_ai.planning import PlanOutcome, PlanStatus
 from fleet_ai.tools import Dispatcher
+from fleet_ai.views import safe_last_error, safe_role
 
 DEFAULT_MAX_TURNS = 8
 DEFAULT_MAX_TOOL_CALLS_PER_TURN = 4
@@ -146,22 +146,15 @@ def _refusal(error_code: str) -> dict[str, str]:
     }
 
 
-# Códigos de `last_error` do contrato (ADR-0005); qualquer outro texto do backend
-# vira um código genérico antes de chegar ao modelo.
-_KNOWN_LAST_ERRORS = {"", "NAV2_REJECTED", "NAV2_ABORTED"}
-_IDENTIFIER = re.compile(r"[A-Za-z0-9_-]{1,64}")
-
-
 def _for_model(result: dict[str, Any]) -> dict[str, Any]:
     """Resultado de sucesso sem texto livre do backend: só campos do contrato."""
     if "last_error" not in result:
         return result
-    view = dict(result)
-    if view["last_error"] not in _KNOWN_LAST_ERRORS:
-        view["last_error"] = "NAV_ERROR"
-    if not _IDENTIFIER.fullmatch(str(view.get("role", ""))):
-        view["role"] = "UNKNOWN"
-    return view
+    return {
+        **result,
+        "last_error": safe_last_error(str(result["last_error"])),
+        "role": safe_role(str(result.get("role", ""))),
+    }
 
 
 def _as_message(block: TextBlock | ToolUseBlock) -> dict[str, Any]:

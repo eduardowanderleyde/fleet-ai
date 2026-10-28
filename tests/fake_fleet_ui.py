@@ -18,11 +18,14 @@ leituras de status. Destinos fora de `bounds` falham com NAV2_REJECTED.
 """
 
 import asyncio
+import base64
+import io
 from dataclasses import dataclass, field
 from typing import Any
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+from PIL import Image
 
 
 @dataclass
@@ -60,6 +63,12 @@ class FakeFleetUiOptions:
     cancel_service_fails: bool = False
     # Segundos que o POST /api/cancel demora para responder (backend lento).
     cancel_delay: float = 0.0
+    # Mapa SLAM do `GET /api/map`: PNG, resolução e origem; None = `available: false`.
+    map_png: bytes | None = field(default_factory=lambda: blank_png(30, 30))
+    map_resolution: float = 0.1
+    map_origin: tuple[float, float] = (0.0, 0.0)
+    # Corpo do `/api/map` usado no lugar do gerado (para testar corpos inválidos).
+    map_body: dict[str, Any] | None = None
 
 
 def create_fake_fleet_ui(options: FakeFleetUiOptions) -> FastAPI:
@@ -96,6 +105,24 @@ def create_fake_fleet_ui(options: FakeFleetUiOptions) -> FastAPI:
         if robot.reads_left <= 0:
             robot.x, robot.y, robot.yaw = x, y, yaw
             robot.nav_state, robot.goal = "idle", None
+
+    @app.get("/api/map")
+    def fleet_map(robot_id: str = "") -> dict[str, Any]:
+        if options.map_body is not None:
+            return options.map_body
+        if options.map_png is None:
+            return {"available": False}
+        image = Image.open(io.BytesIO(options.map_png))
+        return {
+            "available": True,
+            "robot_id": robot_id or next(iter(robots), ""),
+            "resolution": options.map_resolution,
+            "origin_x": options.map_origin[0],
+            "origin_y": options.map_origin[1],
+            "width": image.width,
+            "height": image.height,
+            "png_b64": base64.b64encode(options.map_png).decode("ascii"),
+        }
 
     @app.get("/api/list_robots")
     def list_robots() -> dict[str, list[str]]:
@@ -179,3 +206,10 @@ def create_fake_fleet_ui(options: FakeFleetUiOptions) -> FastAPI:
         return ros_call("Cancel", request, response)
 
     return app
+
+
+def blank_png(width: int, height: int) -> bytes:
+    """PNG livre (cinza claro) de `width` x `height` pixels."""
+    buffer = io.BytesIO()
+    Image.new("L", (width, height), 254).save(buffer, format="PNG")
+    return buffer.getvalue()

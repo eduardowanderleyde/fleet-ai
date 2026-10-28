@@ -48,6 +48,18 @@ class Mission:
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     finished_at: datetime | None = None
 
+    def summary(self) -> dict[str, Any]:
+        """Resumo para o histórico (SPEC-003): sem passos nem texto final."""
+        return {
+            "mission_id": self.mission_id,
+            "status": self.status,
+            "instruction": self.instruction,
+            "robot_id": self.robot_id,
+            "planner": self.planner,
+            "created_at": self.created_at.isoformat(),
+            "finished_at": self.finished_at.isoformat() if self.finished_at else None,
+        }
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "mission_id": self.mission_id,

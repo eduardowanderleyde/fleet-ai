@@ -1,16 +1,21 @@
 """Aplicação HTTP do Fleet AI."""
 
+import logging
 import os
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
+from pathlib import Path
+from typing import Any
 
 import httpx2
-from fastapi import BackgroundTasks, FastAPI, Request
+from fastapi import BackgroundTasks, FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from fleet_ai.config import fleet_adapter_from_env, planner_from_env
+from fleet_ai.contract import FleetBackendError
 from fleet_ai.executor import Executor
 from fleet_ai.guards import (
     Limits,
@@ -31,6 +36,9 @@ from fleet_ai.missions import (
 )
 from fleet_ai.planning import Planner, ScopeGuard
 from fleet_ai.scenario import load_names
+from fleet_ai.views import FleetViews
+
+log = logging.getLogger("fleet_ai.app")
 
 
 class MissionRequest(BaseModel):
@@ -98,6 +106,52 @@ def create_app(
         """Liveness: o processo responde; nunca consulta o backend de frota."""
         return {"status": "alive"}
 
+    views = FleetViews(fleet, names, clock)
+
+    @app.middleware("http")
+    async def security_headers(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        response = await call_next(request)
+        response.headers.update(SECURITY_HEADERS)
+        return response
+
+    app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
+
+    @app.get("/", include_in_schema=False)
+    def index() -> FileResponse:
+        """Interface web local (SPEC-003): só pelo túnel SSH, em 127.0.0.1."""
+        return FileResponse(WEB_DIR / "index.html", media_type="text/html")
+
+    @app.get("/v1/fleet", response_model=None)
+    async def fleet_view() -> dict[str, Any] | JSONResponse:
+        """Robôs com pose, estado e posição no mapa da interface (SPEC-003)."""
+        try:
+            return await views.fleet()
+        except FleetBackendError as exc:
+            return _fleet_unavailable(exc)
+
+    @app.get("/v1/map", response_model=None)
+    async def map_view() -> dict[str, Any] | JSONResponse:
+        try:
+            return await views.map_view()
+        except FleetBackendError as exc:
+            return _fleet_unavailable(exc)
+
+    @app.get("/v1/map/image.png", response_model=None)
+    async def map_image() -> Response:
+        try:
+            state = await views.map_state()
+        except FleetBackendError as exc:
+            return _fleet_unavailable(exc)
+        if state.fleet_map is None:
+            return _refusal(404, "map_unavailable", "No map is available for this fleet.")
+        return Response(
+            state.fleet_map.png,
+            media_type="image/png",
+            headers={"Cache-Control": "max-age=300", "X-Content-Type-Options": "nosniff"},
+        )
+
     @app.post("/v1/missions", status_code=202, response_model=None)
     async def create_mission(
         request: MissionRequest, http: Request, background: BackgroundTasks
@@ -147,6 +201,15 @@ def create_app(
         finally:
             running -= 1
 
+    @app.get("/v1/missions")
+    def list_missions(limit: int = Query(20, ge=1, le=50)) -> dict[str, Any]:
+        """Histórico: ativas e encerradas, da mais nova para a mais antiga (SPEC-003).
+
+        Só lê o que a retenção guarda (ticket 14); os detalhes ficam no `GET` por id.
+        """
+        newest = list(missions.values())[::-1][:limit]
+        return {"missions": [mission.summary() for mission in newest]}
+
     @app.get("/v1/missions/{mission_id}", response_model=None)
     async def get_mission(mission_id: str) -> dict[str, object] | JSONResponse:
         mission = missions.get(mission_id)
@@ -157,9 +220,28 @@ def create_app(
     return app
 
 
+def _fleet_unavailable(exc: FleetBackendError) -> JSONResponse:
+    """Texto fixo para a interface; o detalhe vai só para o log, com o tipo do erro."""
+    log.warning("fleet_read_failed error_type=%s", type(exc).__name__, extra={"detail": str(exc)})
+    return _refusal(503, "fleet_unavailable", "The fleet backend is unavailable.")
+
+
 def _refusal(status_code: int, error: str, message: str) -> JSONResponse:
     """Corpo padronizado das recusas da API (SPEC-001): {"error", "message"}."""
     return JSONResponse({"error": error, "message": message}, status_code=status_code)
+
+
+WEB_DIR = Path(__file__).parent / "web"
+
+# Página e API: nada de origens externas, scripts inline nem enquadramento (SPEC-003).
+SECURITY_HEADERS = {
+    "Content-Security-Policy": (
+        "default-src 'self'; img-src 'self'; script-src 'self'; style-src 'self'; "
+        "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+    ),
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+}
 
 
 # Estimativa, não garantia, de quando haverá capacidade de retenção (SPEC-001).

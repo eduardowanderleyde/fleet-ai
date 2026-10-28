@@ -14,6 +14,7 @@ from fleet_ai.contract import (
     CancelOutcome,
     CommandRefused,
     ExecutorTimeout,
+    FleetMap,
     Pose,
     RobotStatus,
 )
@@ -36,6 +37,14 @@ class Executor:
 
     async def aclose(self) -> None:
         await self._adapter.aclose()
+
+    async def fleet_status(self) -> list[RobotStatus]:
+        """Estado de todos os robôs numa única leitura de `/api/status`."""
+        status = await self._adapter.status()
+        return [_robot_status(status, robot["robot_id"]) for robot in status["robots"]]
+
+    async def fleet_map(self) -> FleetMap | None:
+        return await self._adapter.fleet_map()
 
     async def list_robots(self) -> list[str]:
         return await self._adapter.list_robots()

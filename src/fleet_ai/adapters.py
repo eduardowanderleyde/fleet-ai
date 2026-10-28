@@ -4,9 +4,11 @@ O adaptador `sim` fala com o SimFleet, que já responde no contrato normalizado.
 O adaptador `fleet_ui` é o único lugar que conhece o formato bruto do Fleet UI.
 """
 
+import base64
+import binascii
 import math
 import re
-from typing import Any, Protocol, cast
+from typing import Any, Protocol, TypeGuard, cast
 
 import httpx2
 
@@ -15,6 +17,7 @@ from fleet_ai.contract import (
     CommandErrorCode,
     CommandResponse,
     FleetBackendError,
+    FleetMap,
 )
 
 
@@ -32,6 +35,10 @@ class FleetAdapter(Protocol):
     ) -> CommandResponse: ...
 
     async def cancel(self, robot_id: str) -> CommandResponse: ...
+
+    async def fleet_map(self) -> FleetMap | None:
+        """`GET /api/map` (formato do Fleet UI); None se o backend não tem mapa."""
+        ...
 
     async def aclose(self) -> None: ...
 
@@ -82,6 +89,9 @@ class _HttpAdapter:
         status: dict[str, Any] = data
         return status
 
+    async def fleet_map(self) -> FleetMap | None:
+        return _fleet_map(await self._get("/api/map"))
+
 
 class SimAdapter(_HttpAdapter):
     """SimFleet: repassa as respostas, que já são normalizadas."""
@@ -117,6 +127,56 @@ class FleetUiAdapter(_HttpAdapter):
         if robot_id == "":
             return _UNKNOWN_EMPTY_ID
         return _translate(await self._post("/api/cancel", robot_id=robot_id))
+
+
+# Limites do mapa (SPEC-003): o PNG decodificado tem no máximo 8 MB e 4096 x 4096 px.
+MAX_MAP_BYTES = 8 * 1024 * 1024
+MAX_MAP_SIDE = 4096
+_PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+
+
+def _fleet_map(data: Any) -> FleetMap | None:
+    """Valida o corpo do `/api/map` sem confiar nele: tamanho, base64 estrito e IHDR."""
+    where = "GET /api/map"
+    if not isinstance(data, dict) or not isinstance(data.get("available"), bool):
+        raise FleetBackendError(f"{where}: body outside the contract")
+    if not data["available"]:
+        return None
+    resolution, origin_x, origin_y = (data.get(k) for k in ("resolution", "origin_x", "origin_y"))
+    width, height, encoded = data.get("width"), data.get("height"), data.get("png_b64")
+    if not (
+        _finite(resolution)
+        and _finite(origin_x)
+        and _finite(origin_y)
+        and resolution > 0
+        and _side(width)
+        and _side(height)
+        and isinstance(encoded, str)
+        and len(encoded) <= (MAX_MAP_BYTES + 2) // 3 * 4
+    ):
+        raise FleetBackendError(f"{where}: body outside the contract")
+    try:
+        png = base64.b64decode(encoded, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise FleetBackendError(f"{where}: png_b64 is not strict base64") from exc
+    # Confere assinatura e cabeçalho IHDR nos bytes, sem decodificar a imagem.
+    if not (
+        len(png) <= MAX_MAP_BYTES
+        and png.startswith(_PNG_SIGNATURE)
+        and png[12:16] == b"IHDR"
+        and int.from_bytes(png[16:20]) == width
+        and int.from_bytes(png[20:24]) == height
+    ):
+        raise FleetBackendError(f"{where}: png does not match the declared map")
+    return FleetMap(float(resolution), float(origin_x), float(origin_y), width, height, png)
+
+
+def _side(value: object) -> TypeGuard[int]:
+    return type(value) is int and 0 < value <= MAX_MAP_SIDE
+
+
+def _finite(value: object) -> TypeGuard[float]:
+    return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
 
 
 def _json(response: httpx2.Response, where: str) -> Any:

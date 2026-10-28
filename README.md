@@ -124,6 +124,39 @@ falham no status com `last_error: NAV2_REJECTED`; a causa (`target_occupied`,
 A suíte remove do ambiente qualquer variável `*_API_KEY` e falha se algum SDK de
 LLM pago aparecer no `uv.lock`, inclusive como dependência indireta.
 
+### Interface web local (Control Center)
+
+A página é servida pelo próprio Fleet AI, em HTML, CSS e JavaScript simples (sem
+CDN, sem bundler, sem dependências externas). Ela mostra o mapa do cenário com
+obstáculos, lugares e robôs, atualiza posições e estados a cada 1 s, envia
+comandos em português e acompanha cada missão com status, passos e texto final,
+além da saúde da API e do backend. O navegador fala só com o Fleet AI; o SimFleet
+nunca fica exposto a ele.
+
+```bash
+./scripts/demo.sh      # SimFleet e Fleet AI só em 127.0.0.1 (SIMFLEET_TIME_SCALE=3)
+```
+
+O script imprime o comando do túnel. No seu computador:
+`ssh -L 8000:127.0.0.1:8000 <usuário>@<vps>` e depois `http://localhost:8000/`.
+**Não exponha a API publicamente** antes do ticket 15 (respostas públicas
+sanitizadas) e de um controle de acesso.
+
+Roteiro manual de aceitação pelo navegador:
+
+1. Abrir a página: o mapa do warehouse com obstáculos e os 7 lugares; tb1, tb2 e
+   tb3 nas posições iniciais, com estado e orientação.
+2. Enviar "leve o tb1 até a doca de carga"; ver o tb1 andar no mapa, os passos
+   aparecerem e o status virar `concluída`, com o texto final.
+3. Missão incompleta: subir com `FLEET_AI_MISSION_TIMEOUT=5` e enviar
+   "leve o tb2 até a sala noroeste"; ver `incompleta`, com o resultado do
+   cancelamento.
+4. Enviar `<img src=x onerror=alert(1)>`: o texto aparece literal, sem alerta.
+5. Parar o SimFleet: a página mostra "Backend de frota indisponível", marca as
+   posições como desatualizadas e mantém o histórico.
+6. Subir o SimFleet de novo: a página se recupera sozinha.
+7. Na aba de rede, só há pedidos para `localhost:8000`.
+
 ### Backend de frota e health
 
 O Fleet AI fala com o SimFleet por padrão. Para usar o Fleet UI (ROS 2), troque só

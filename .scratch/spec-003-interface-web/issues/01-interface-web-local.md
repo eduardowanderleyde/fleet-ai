@@ -6,7 +6,7 @@ Primeiro ticket da SPEC-003 (README, roadmap: "interface web"). Streaming de pas
 
 **Blocked by:** SPEC-001 tickets 10 e 11 (concluídos). Não depende do ticket 15 enquanto ficar em `127.0.0.1`; exposição pública depende do ticket 15 e de controle de acesso.
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 ## O que já existe (inspecionado em 2026-10-28)
 
@@ -57,24 +57,24 @@ Os endpoints de leitura não contam no limite de taxa de missões. Nenhum contra
 
 ## Critérios de aceitação
 
-- [ ] `GET /` serve a página com o CSP e os cabeçalhos acima; nenhum recurso externo é carregado
-- [ ] O mapa do warehouse aparece com obstáculos, os 7 lugares nomeados e os 3 robôs nas posições reais
-- [ ] As posições e os estados são atualizados a cada 1 s, sem recarregar a página
-- [ ] Um comando em português pelo campo vira `POST /v1/missions`; a missão aparece com status, passos e texto final, e o robô se move no mapa
-- [ ] Os status `completed`, `not_understood`, `incomplete`, `failed` e `rejected`, e as recusas `422`, `429` (com `Retry-After`) e `503`, aparecem com texto claro
-- [ ] O painel de saúde mostra a API (`/health/live`), o backend (`/health`: `ok` ou `degraded`), o adaptador, o planejador e `llm_enabled: false`
-- [ ] Com o backend fora do ar, a página continua de pé, mostra "backend indisponível", marca as posições como desatualizadas e mantém o histórico de missões
-- [ ] Sem conexão com o Fleet AI, a página mostra "sem conexão" e se recupera sozinha quando a conexão volta
-- [ ] Um texto da API com HTML (por exemplo, `<img src=x onerror=alert(1)>` na instrução) aparece como texto, nunca como marcação
-- [ ] O navegador nunca chama o SimFleet: todos os pedidos vão para a origem do Fleet AI
-- [ ] Funciona com o adaptador `fleet_ui` sem mapa (grade simples), sem erro na página
-- [ ] `scripts/demo.sh` sobe tudo em `127.0.0.1` e imprime o comando do túnel; README com o roteiro
-- [ ] Nenhuma dependência nova de runtime além do que já está no projeto; nenhum LLM, SDK ou serviço adicional
-- [ ] **Conversão de coordenadas:** o canvas converte metros em pixels com `resolution`, `origin_x`, `origin_y`, `width` e `height`, com o eixo y do mundo para cima e o do PNG para baixo, e a orientação do robô (`yaw` em radianos, anti-horário a partir de +x no mundo) desenhada com o sinal certo no canvas. Testado com pontos conhecidos (origem, cantos, um lugar nomeado), os limites do mapa e posições fora dele (marcadas como fora do mapa, sem quebrar o desenho)
-- [ ] **Histórico:** `GET /v1/missions` inclui missões ativas (`running`) e encerradas, em ordem de criação decrescente, sem mudar as regras de retenção (ticket 14); os detalhes continuam só em `GET /v1/missions/{mission_id}`
-- [ ] **Leituras validadas:** os endpoints novos validam e sanitizam o que vem do backend (corpo fora do contrato vira `503` com texto fixo), nunca devolvem mensagem de exceção bruta, limitam o tamanho dos payloads (mapa até 8 MB decodificado e dimensões até 4096 x 4096 px; até 100 robôs; textos de identificador até 64 caracteres) e validam o PNG com segurança (assinatura, cabeçalho `IHDR` coerente com `width` e `height`, base64 estrito, decodificação limitada, sem carregar a imagem inteira antes de conferir o tamanho)
-- [ ] **Só local:** a interface e a API ficam em `127.0.0.1`; o ticket não configura bind público, proxy externo nem exposição do SimFleet (o `scripts/demo.sh` usa `--host 127.0.0.1` nos dois serviços)
-- [ ] **Sem dependências externas no frontend:** nenhum CDN, script externo, fonte remota ou biblioteca paga; os arquivos estáticos ficam no repositório
+- [x] `GET /` serve a página com o CSP e os cabeçalhos acima; nenhum recurso externo é carregado
+- [x] O mapa do warehouse aparece com obstáculos, os 7 lugares nomeados e os 3 robôs nas posições reais
+- [x] As posições e os estados são atualizados a cada 1 s, sem recarregar a página
+- [x] Um comando em português pelo campo vira `POST /v1/missions`; a missão aparece com status, passos e texto final, e o robô se move no mapa
+- [x] Os status `completed`, `not_understood`, `incomplete`, `failed` e `rejected`, e as recusas `422`, `429` (com `Retry-After`) e `503`, aparecem com texto claro
+- [x] O painel de saúde mostra a API (`/health/live`), o backend (`/health`: `ok` ou `degraded`), o adaptador, o planejador e `llm_enabled: false`
+- [x] Com o backend fora do ar, a página continua de pé, mostra "backend indisponível", marca as posições como desatualizadas e mantém o histórico de missões
+- [x] Sem conexão com o Fleet AI, a página mostra "sem conexão" e se recupera sozinha quando a conexão volta
+- [x] Um texto da API com HTML (por exemplo, `<img src=x onerror=alert(1)>` na instrução) aparece como texto, nunca como marcação
+- [x] O navegador nunca chama o SimFleet: todos os pedidos vão para a origem do Fleet AI
+- [x] Funciona com o adaptador `fleet_ui` sem mapa (grade simples), sem erro na página
+- [x] `scripts/demo.sh` sobe tudo em `127.0.0.1` e imprime o comando do túnel; README com o roteiro
+- [x] Nenhuma dependência nova de runtime além do que já está no projeto; nenhum LLM, SDK ou serviço adicional
+- [x] **Conversão de coordenadas:** o canvas converte metros em pixels com `resolution`, `origin_x`, `origin_y`, `width` e `height`, com o eixo y do mundo para cima e o do PNG para baixo, e a orientação do robô (`yaw` em radianos, anti-horário a partir de +x no mundo) desenhada com o sinal certo no canvas. Testado com pontos conhecidos (origem, cantos, um lugar nomeado), os limites do mapa e posições fora dele (marcadas como fora do mapa, sem quebrar o desenho)
+- [x] **Histórico:** `GET /v1/missions` inclui missões ativas (`running`) e encerradas, em ordem de criação decrescente, sem mudar as regras de retenção (ticket 14); os detalhes continuam só em `GET /v1/missions/{mission_id}`
+- [x] **Leituras validadas:** os endpoints novos validam e sanitizam o que vem do backend (corpo fora do contrato vira `503` com texto fixo), nunca devolvem mensagem de exceção bruta, limitam o tamanho dos payloads (mapa até 8 MB decodificado e dimensões até 4096 x 4096 px; até 100 robôs; textos de identificador até 64 caracteres) e validam o PNG com segurança (assinatura, cabeçalho `IHDR` coerente com `width` e `height`, base64 estrito, decodificação limitada, sem carregar a imagem inteira antes de conferir o tamanho)
+- [x] **Só local:** a interface e a API ficam em `127.0.0.1`; o ticket não configura bind público, proxy externo nem exposição do SimFleet (o `scripts/demo.sh` usa `--host 127.0.0.1` nos dois serviços)
+- [x] **Sem dependências externas no frontend:** nenhum CDN, script externo, fonte remota ou biblioteca paga; os arquivos estáticos ficam no repositório
 
 ## Testes previstos
 
@@ -116,3 +116,13 @@ Seam: API HTTP do Fleet AI em processo, com SimFleet e fake do Fleet UI em proce
 - **D1. Onde o mapa nasce:** `GET /api/map` no SimFleet, no formato do Fleet UI (recomendado), em vez de o Fleet AI ler o PNG do disco (isso acopla os dois processos ao mesmo sistema de arquivos e quebra no Compose).
 - **D2. SPEC-003:** abrir a pasta `spec-003-interface-web` com este ticket, sem uma SPEC longa por enquanto (recomendado), em vez de ampliar o escopo da SPEC-001.
 - **D3. Cache do `/v1/fleet`:** sem cache nesta versão local (cada aba gera uma leitura do backend por segundo). Antes da exposição pública, rever junto com o ticket 15.
+
+## Comments
+
+- 2026-10-28 (implementação), **mudança na forma de testar a geometria**: o plano era executar as funções puras de `geometry.js` num interpretador de JavaScript embutido, só de desenvolvimento. A instalação desse pacote foi bloqueada pela política de permissões (código externo), e não há Node na VPS. A conversão metros → pixels e a orientação ficaram em `src/fleet_ai/geometry.py`: `/v1/fleet` e `/v1/map` já devolvem `pixel` (`x`, `y`, `inside`) e `heading` (ângulo de canvas, `−yaw`), e o JavaScript só desenha. Os testes previstos de conversão (pontos conhecidos, cantos, fora do mapa e rotação) rodam pela API.
+- **Notas e riscos restantes:**
+  - O JavaScript não é executado nos testes automatizados; o desenho do canvas, o polling, o recuo e as mensagens são cobertos pelo roteiro manual e pelas verificações estáticas (sem `innerHTML`, `eval`, scripts inline ou origens externas).
+  - Sem mapa no backend (Fleet UI sem SLAM), o Fleet AI monta uma moldura sintética em volta dos lugares e das posições dos robôs no momento da primeira leitura; um robô que sair dela aparece como "fora do mapa".
+  - O mapa fica em cache por 5 minutos no Fleet AI; um mapa SLAM que mude depois disso demora até 5 minutos para aparecer.
+  - `/v1/fleet` não tem cache (D3): cada aba aberta faz uma leitura do backend por segundo.
+  - Os passos da missão ainda podem mostrar a mensagem bruta de uma recusa; é o ticket 15, pré-requisito da exposição pública.

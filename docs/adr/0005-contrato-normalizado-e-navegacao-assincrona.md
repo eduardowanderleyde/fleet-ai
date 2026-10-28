@@ -161,3 +161,13 @@ chega à resposta da missão, que só diz que o backend de frota está indispon�
 - Os HTTP 409 de `ALREADY_NAVIGATING` e `CANCEL_FAILED` são do contrato
   normalizado; no Fleet UI essas recusas chegam com HTTP 200, e o adaptador
   normaliza.
+
+## Extensão (2026-10-28, SPEC-003 ticket 01)
+
+- `GET /api/map` entra no contrato como leitura **opcional**, no formato que o
+  Fleet UI já usa (`fleet-ui@a57a3b1`, `backend/main.py`):
+  `{"available", "resolution", "origin_x", "origin_y", "width", "height", "png_b64"}`,
+  ou `{"available": false}` sem mapa. O SimFleet passa a servir o PNG do cenário
+  nesse formato. O adaptador valida o corpo (base64 estrito, assinatura e `IHDR`
+  coerentes, até 8 MB e 4096 x 4096 px); fora disso é `FleetBackendError`. Os
+  demais endpoints do contrato não mudam.

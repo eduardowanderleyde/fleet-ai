@@ -49,6 +49,7 @@ class Scenario:
     places: tuple[Place, ...]
     speed_mps: float
     grid: OccupancyGrid = field(compare=False, repr=False)
+    map_image: Path | None = field(default=None, compare=False, repr=False)
 
     @property
     def planning_resolution(self) -> float:
@@ -76,7 +77,9 @@ def load_scenario(path: Path) -> Scenario:
         raise ScenarioError(f"{path}: imagem do mapa não encontrada: {image}")
     factor = _planning_factor(path, resolution, declared)
     grid = OccupancyGrid(image, *map_params, inflate_m=inflate_m, factor=factor)
-    scenario = Scenario(robots=robots, places=places, speed_mps=speed_mps, grid=grid)
+    scenario = Scenario(
+        robots=robots, places=places, speed_mps=speed_mps, grid=grid, map_image=image
+    )
     _require_unique(path, "id de robô", [robot.id for robot in scenario.robots])
     _require_unique(path, "nome de lugar", [place.name for place in scenario.places])
     _require_unique(
