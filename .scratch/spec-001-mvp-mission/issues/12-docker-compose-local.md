@@ -16,3 +16,4 @@
 ## Comments
 
 - 2026-10-27 (ticket 11): definir como o proxy reverso trata `/health` (readiness, pode responder 503) e `/health/live`; uma indisponibilidade temporária do backend de frota não pode derrubar o acesso à interface web nem à consulta do histórico de missões.
+- 2026-10-28 (ticket 11), **ponto de atenção**: no shutdown do Fleet AI, encerrar corretamente a sondagem de readiness compartilhada que estiver em andamento (cancelar e aguardar a tarefa no ciclo de vida da aplicação), para que `docker compose stop` não deixe tarefas pendentes nem avisos "Task was destroyed but it is pending".
