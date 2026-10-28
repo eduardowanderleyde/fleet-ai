@@ -4,23 +4,23 @@
 
 **Blocked by:** 06
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] `FLEET_AI_FLEET_ADAPTER` aceita só `sim` (padrão) e `fleet_ui`; outro valor impede o serviço de subir com mensagem que lista os valores válidos
-- [ ] Com `fleet_ui`, `FLEET_AI_FLEET_URL` é obrigatória; sem ela o serviço não sobe
-- [ ] URL com credenciais, esquema diferente de `http`/`https`, sem host, com porta inválida, com `?`, `#` ou `;` impede o serviço de subir, **sem nenhuma chamada de rede**; a mensagem não repete credenciais
-- [ ] Caminho base preservado: com `FLEET_AI_FLEET_URL` igual a `https://host/fleet` ou `https://host/fleet/`, os dois adaptadores chamam exatamente `https://host/fleet/api/list_robots` (e os demais endpoints sob `/fleet/api/`); a montagem da URL nunca descarta o prefixo
-- [ ] O serviço sobe com o backend fora do ar; `/health/live` responde 200 e `/health` responde 503 `degraded`
-- [ ] `GET /health/live` → `200 {"status": "alive"}` e nunca consulta o backend
-- [ ] `GET /health` → `200` com `{"status": "ok", "fleet_adapter", "fleet_backend_reachable": true, "planner": "deterministic", "llm_enabled": false}` quando o backend responde de forma válida, com os dois adaptadores
-- [ ] Backend com conexão recusada, mais lento que o prazo de 2 s, com 5xx ou corpo fora do contrato → `503` com `status: "degraded"` e `fleet_backend_reachable: false`; o health responde dentro do prazo
-- [ ] Recuperação: com o backend de volta, depois de o cache expirar, `/health` volta a 200 `ok`
-- [ ] Cache de 5 s: dentro dele, chamadas ao `/health` não sondam o backend de novo
-- [ ] Sondagem única: várias chamadas simultâneas ao `/health` depois de o cache expirar resultam em **uma** sondagem; todas recebem o mesmo resultado; cancelar uma chamada não cancela a sondagem
-- [ ] A sondagem compartilhada nunca fica pendente para sempre: depois de uma falha, de uma exceção inesperada da sondagem ou do cancelamento de uma das chamadas, o cache é atualizado ao fim da sondagem e a chamada seguinte, depois do cache, sonda de novo e responde
-- [ ] O corpo do `/health` tem só os cinco campos; nunca URL, host, porta, credenciais nem mensagens de erro, em nenhum cenário de falha
-- [ ] O teste de aceitação do ticket 06 passa com o adaptador `fleet_ui` apontado para o fake do Fleet UI, sem alterar as asserções
-- [ ] Checklist manual no README: subir o Fleet UI real, apontar o Fleet AI, rodar uma missão com o planejador determinístico; avisos de que o Fleet UI não tem autenticação (só rede confiável) e de que a readiness não certifica a segurança de robôs físicos
+- [x] `FLEET_AI_FLEET_ADAPTER` aceita só `sim` (padrão) e `fleet_ui`; outro valor impede o serviço de subir com mensagem que lista os valores válidos
+- [x] Com `fleet_ui`, `FLEET_AI_FLEET_URL` é obrigatória; sem ela o serviço não sobe
+- [x] URL com credenciais, esquema diferente de `http`/`https`, sem host, com porta inválida, com `?`, `#` ou `;` impede o serviço de subir, **sem nenhuma chamada de rede**; a mensagem não repete credenciais
+- [x] Caminho base preservado: com `FLEET_AI_FLEET_URL` igual a `https://host/fleet` ou `https://host/fleet/`, os dois adaptadores chamam exatamente `https://host/fleet/api/list_robots` (e os demais endpoints sob `/fleet/api/`); a montagem da URL nunca descarta o prefixo
+- [x] O serviço sobe com o backend fora do ar; `/health/live` responde 200 e `/health` responde 503 `degraded`
+- [x] `GET /health/live` → `200 {"status": "alive"}` e nunca consulta o backend
+- [x] `GET /health` → `200` com `{"status": "ok", "fleet_adapter", "fleet_backend_reachable": true, "planner": "deterministic", "llm_enabled": false}` quando o backend responde de forma válida, com os dois adaptadores
+- [x] Backend com conexão recusada, mais lento que o prazo de 2 s, com 5xx ou corpo fora do contrato → `503` com `status: "degraded"` e `fleet_backend_reachable: false`; o health responde dentro do prazo
+- [x] Recuperação: com o backend de volta, depois de o cache expirar, `/health` volta a 200 `ok`
+- [x] Cache de 5 s: dentro dele, chamadas ao `/health` não sondam o backend de novo
+- [x] Sondagem única: várias chamadas simultâneas ao `/health` depois de o cache expirar resultam em **uma** sondagem; todas recebem o mesmo resultado; cancelar uma chamada não cancela a sondagem
+- [x] A sondagem compartilhada nunca fica pendente para sempre: depois de uma falha, de uma exceção inesperada da sondagem ou do cancelamento de uma das chamadas, o cache é atualizado ao fim da sondagem e a chamada seguinte, depois do cache, sonda de novo e responde
+- [x] O corpo do `/health` tem só os cinco campos; nunca URL, host, porta, credenciais nem mensagens de erro, em nenhum cenário de falha
+- [x] O teste de aceitação do ticket 06 passa com o adaptador `fleet_ui` apontado para o fake do Fleet UI, sem alterar as asserções
+- [x] Checklist manual no README: subir o Fleet UI real, apontar o Fleet AI, rodar uma missão com o planejador determinístico; avisos de que o Fleet UI não tem autenticação (só rede confiável) e de que a readiness não certifica a segurança de robôs físicos
 
 ## Testes previstos
 
@@ -47,3 +47,11 @@ Seams: API HTTP do Fleet AI em processo (SPEC-001). Configuração por variávei
 | Aceitação com `fleet_ui` | o teste de aceitação do ticket 06, parametrizado por adaptador |
 
 Cada garantia com prova de sanidade (desligar a regra e ver o teste falhar).
+
+## Comments
+
+- 2026-10-28 (implementação), **riscos restantes**:
+  - Se o serviço desligar durante uma sondagem, a tarefa compartilhada pode gerar o aviso "Task was destroyed but it is pending" no log; sem efeito para o usuário.
+  - A readiness usa `list_robots` como prova de contrato básico; ela não verifica `/api/status` nem os comandos, e não certifica robôs físicos (SPEC-001).
+  - O `/health` é público: o cache de 5 s e a sondagem única limitam as chamadas ao backend, mas o proxy reverso do deploy (ticket 12) ainda precisa limitar a taxa bruta.
+  - O teste do esqueleto do ticket 01 passou a usar `/health/live`, porque `/health` virou readiness.

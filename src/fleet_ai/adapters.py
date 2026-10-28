@@ -19,6 +19,8 @@ from fleet_ai.contract import (
 
 
 class FleetAdapter(Protocol):
+    name: str  # "sim" ou "fleet_ui", como em FLEET_AI_FLEET_ADAPTER
+
     async def list_robots(self) -> list[str]: ...
 
     async def status(self) -> dict[str, Any]:
@@ -84,6 +86,8 @@ class _HttpAdapter:
 class SimAdapter(_HttpAdapter):
     """SimFleet: repassa as respostas, que já são normalizadas."""
 
+    name = "sim"
+
     async def go_to_point(self, robot_id: str, x: float, y: float, yaw: float) -> CommandResponse:
         return _normalized(
             await self._post("/api/go_to_point", robot_id=robot_id, x=x, y=y, yaw=yaw)
@@ -95,6 +99,8 @@ class SimAdapter(_HttpAdapter):
 
 class FleetUiAdapter(_HttpAdapter):
     """Fleet UI (fleet-ui@a57a3b1): traduz as respostas brutas para o contrato."""
+
+    name = "fleet_ui"
 
     async def go_to_point(self, robot_id: str, x: float, y: float, yaw: float) -> CommandResponse:
         if robot_id == "":

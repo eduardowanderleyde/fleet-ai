@@ -2,9 +2,11 @@
 
 import math
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+from tests.fake_fleet_ui import FakeFleetUiOptions, FakeRobot
 from tests.fleet_ai_client import mission_stack
 
 pytestmark = pytest.mark.anyio
@@ -28,8 +30,28 @@ async def test_unknown_mission_is_not_found() -> None:
         assert response.status_code == 404
 
 
-async def test_move_to_named_place_completes_with_the_robot_there() -> None:
-    async with mission_stack() as stack:
+def warehouse_on_fleet_ui() -> FakeFleetUiOptions:
+    """Fake do Fleet UI com os robôs do warehouse, para rodar a aceitação no adaptador fleet_ui."""
+    return FakeFleetUiOptions(
+        robots=[
+            FakeRobot("tb1", "MUUT", 0.0, 0.0),
+            FakeRobot("tb2", "MUUT", 0.0, 2.0),
+            FakeRobot("tb3", "FUUT", 0.0, 4.0),
+        ],
+        bounds=(-20.0, -30.0, 20.0, 30.0),
+    )
+
+
+@pytest.fixture(params=["sim", "fleet_ui"])
+def backend(request: pytest.FixtureRequest) -> dict[str, Any]:
+    """Opções do mission_stack para cada adaptador de frota (ticket 11)."""
+    return {} if request.param == "sim" else {"fake_fleet_ui": warehouse_on_fleet_ui()}
+
+
+async def test_move_to_named_place_completes_with_the_robot_there(
+    backend: dict[str, Any],
+) -> None:
+    async with mission_stack(**backend) as stack:
         mission = await stack.run_mission("leve o tb1 até a doca de carga")
         pose = (await stack.fleet.get("/api/status")).json()["poses"]["tb1"]
 

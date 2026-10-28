@@ -10,7 +10,7 @@ por regras; não há LLM pago nem agente autônomo consumindo tokens. A integra�
 com modelos reais é uma funcionalidade futura, opcional e desligada por padrão
 ([ADR-0004](docs/adr/0004-planejador-deterministico-e-llm-opcional.md)).
 
-> **Status: em implementação.** SPEC-001 (MVP), tickets 01 a 09, 13 e 14 concluídos:
+> **Status: em implementação.** SPEC-001 (MVP), tickets 01 a 09, 11, 13 e 14 concluídos:
 > `POST /v1/missions` aceita uma instrução como "leve o tb1 até a doca de carga",
 > o planejador determinístico a executa no SimFleet e `GET /v1/missions/{id}`
 > mostra passos e texto final. Toda missão termina (`completed`, `failed`,
@@ -123,6 +123,44 @@ falham no status com `last_error: NAV2_REJECTED`; a causa (`target_occupied`,
 
 A suíte remove do ambiente qualquer variável `*_API_KEY` e falha se algum SDK de
 LLM pago aparecer no `uv.lock`, inclusive como dependência indireta.
+
+### Backend de frota e health
+
+O Fleet AI fala com o SimFleet por padrão. Para usar o Fleet UI (ROS 2), troque só
+a configuração:
+
+```bash
+FLEET_AI_FLEET_ADAPTER=fleet_ui        # sim (padrão) ou fleet_ui
+FLEET_AI_FLEET_URL=http://fleet-ui:8000  # obrigatória com fleet_ui; aceita caminho base (/fleet)
+```
+
+A URL é validada na inicialização, sem chamadas de rede: só `http`/`https`, sem
+credenciais, `?`, `#` ou `;`. O serviço sobe mesmo com o backend fora do ar.
+
+- `GET /health/live`: liveness; responde 200 enquanto o processo está de pé e nunca
+  consulta o backend. É o healthcheck do container.
+- `GET /health`: readiness; 200 `ok` quando o backend responde de forma válida, 503
+  `degraded` quando está fora do ar, lento (prazo de 2 s) ou fora do contrato. O
+  resultado vale por 5 s e há uma única sondagem por vez. A resposta nunca traz URL,
+  host, porta ou mensagens de erro.
+
+A readiness verifica que o backend está acessível e cumpre o contrato básico; ela
+**não** certifica que um robô físico esteja apto ou seguro para navegar.
+
+### Checklist manual contra o Fleet UI real
+
+O Fleet UI **não tem autenticação**: use-o só numa rede confiável.
+
+1. Suba o Fleet UI com a simulação ou os robôs (ver `orquestracion.md` no repositório
+   `fleet-ui`) e confirme `GET http://<fleet-ui>/api/list_robots`.
+2. Suba o Fleet AI com `FLEET_AI_FLEET_ADAPTER=fleet_ui` e
+   `FLEET_AI_FLEET_URL=http://<fleet-ui>:8000`, e um `FLEET_AI_SCENARIO` com os
+   nomes dos robôs e lugares desse ambiente.
+3. `GET /health` deve responder 200 com `"fleet_adapter": "fleet_ui"`.
+4. Crie a missão `{"instruction": "onde está o tb1?"}` e depois uma de movimento
+   para um lugar seguro e livre; acompanhe por `GET /v1/missions/{id}` e, de
+   preferência, observe o robô ou a simulação.
+5. Pare o Fleet UI e confirme que `/health/live` continua 200 e `/health` vira 503.
 
 ## Como o trabalho é organizado
 

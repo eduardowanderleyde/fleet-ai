@@ -30,6 +30,10 @@ class Executor:
         # de cancelamentos. O robô sai daqui quando é visto fora de `navigating`.
         self._sent: set[str] = set()
 
+    @property
+    def adapter_name(self) -> str:
+        return self._adapter.name
+
     async def aclose(self) -> None:
         await self._adapter.aclose()
 

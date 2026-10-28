@@ -4,12 +4,13 @@ import os
 import time
 from collections.abc import Callable
 
+import httpx2
 from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from fleet_ai.adapters import SimAdapter
+from fleet_ai.config import fleet_adapter_from_env
 from fleet_ai.executor import Executor
 from fleet_ai.guards import (
     Limits,
@@ -19,6 +20,7 @@ from fleet_ai.guards import (
     positive_float,
     robot_id_error,
 )
+from fleet_ai.health import PROBE_TIMEOUT, Readiness
 from fleet_ai.missions import (
     DEFAULT_CANCEL_GRACE,
     DEFAULT_MISSION_TIMEOUT,
@@ -43,16 +45,16 @@ def create_app(
     cancel_grace: float | None = None,
     limits: Limits | None = None,
     clock: Callable[[], float] = time.monotonic,
+    fleet_transport: httpx2.AsyncBaseTransport | None = None,
+    health_probe_timeout: float = PROBE_TIMEOUT,
 ) -> FastAPI:
-    """Sem `executor`, fala com o SimFleet em FLEET_AI_FLEET_URL (padrão localhost:8001).
+    """Sem `executor`, o adaptador vem de FLEET_AI_FLEET_ADAPTER e FLEET_AI_FLEET_URL.
 
     Sem `planner`, usa o planejador determinístico com os nomes do cenário. Limites,
     tempo máximo e prazo de cancelamento não informados vêm das variáveis FLEET_AI_*
     (ou dos padrões da SPEC-001); um valor inválido impede o serviço de subir.
     """
-    fleet = executor or Executor(
-        SimAdapter(os.environ.get("FLEET_AI_FLEET_URL", "http://localhost:8001"))
-    )
+    fleet = executor or Executor(fleet_adapter_from_env(os.environ, fleet_transport))
     active_planner = planner or DeterministicPlanner(load_names())
     guard_limits = limits or Limits.from_env(os.environ)
     mission_timeout = mission_timeout or positive_float(
@@ -64,6 +66,9 @@ def create_app(
     rate = RateLimiter(guard_limits, clock)
     running = 0  # missões em execução agora (limite global de concorrência)
     missions: dict[str, Mission] = {}
+    readiness = Readiness(
+        fleet.list_robots, adapter=fleet.adapter_name, clock=clock, timeout=health_probe_timeout
+    )
     app = FastAPI(title="Fleet AI")
 
     @app.exception_handler(RequestValidationError)
@@ -71,9 +76,23 @@ def create_app(
         fields = ", ".join(str(error["loc"][-1]) for error in exc.errors())
         return _refusal(422, "invalid_request", f"Invalid request: {fields}")
 
-    @app.get("/health")
-    def health() -> dict[str, str]:
-        return {"status": "ok"}
+    @app.get("/health", response_model=None)
+    async def health() -> JSONResponse:
+        """Readiness: o backend de frota responde de forma válida (SPEC-001, ticket 11)."""
+        reachable = await readiness.reachable()
+        body = {
+            "status": "ok" if reachable else "degraded",
+            "fleet_adapter": fleet.adapter_name,
+            "fleet_backend_reachable": reachable,
+            "planner": active_planner.name,
+            "llm_enabled": False,
+        }
+        return JSONResponse(body, status_code=200 if reachable else 503)
+
+    @app.get("/health/live")
+    def live() -> dict[str, str]:
+        """Liveness: o processo responde; nunca consulta o backend de frota."""
+        return {"status": "alive"}
 
     @app.post("/v1/missions", status_code=202, response_model=None)
     async def create_mission(
