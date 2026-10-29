@@ -8,40 +8,41 @@
   <script type="module" src="/static/app.js"></script>
 </head>
 <body>
-  <header>
-    <h1>Fleet AI <span class="muted">— Control Center</span></h1>
-    <p class="note">Planejador determinístico (por regras) · simulação 2D cinemática (SimFleet) · acesso local</p>
-    <p id="connection" class="banner hidden" role="status"></p>
+  <header class="top">
+    <div class="brand">
+      <h1>Fleet AI</h1>
+      <p class="tagline">Comande os robôs do armazém em português.</p>
+    </div>
+    <dl id="health" class="health" aria-label="Saúde do sistema"></dl>
   </header>
+  <p id="connection" class="banner hidden" role="status"></p>
   <main>
-    <section class="map-panel" aria-label="Mapa">
-      <div class="panel-title">
-        <h2>Mapa</h2>
-        <span id="map-note" class="muted"></span>
+    <section class="floor" aria-label="Mapa">
+      <div class="floor-head">
+        <h2>Armazém</h2>
+        <span id="map-note" class="quiet"></span>
       </div>
-      <canvas id="map" width="600" height="800" aria-label="Mapa do cenário com robôs e lugares"></canvas>
-      <ul id="robots" class="robots"></ul>
+      <div class="canvas-frame">
+        <canvas id="map" width="600" height="800" aria-label="Mapa do armazém com robôs e lugares"></canvas>
+      </div>
+      <ul id="robots" class="robots" aria-label="Robôs"></ul>
     </section>
     <section class="side">
-      <div class="panel" aria-label="Saúde">
-        <h2>Saúde</h2>
-        <dl id="health" class="health"></dl>
-      </div>
-      <div class="panel">
-        <h2>Comando</h2>
-        <form id="command">
-          <label for="instruction">Instrução em português</label>
-          <input id="instruction" name="instruction" maxlength="300" autocomplete="off"
-                 placeholder="leve o tb1 até a doca de carga" required>
-          <label for="robot">Escopo (opcional)</label>
-          <select id="robot" name="robot"><option value="">nenhum</option></select>
-          <button type="submit">Enviar</button>
-          <p id="command-error" class="error" role="alert"></p>
-        </form>
-      </div>
+      <form id="command" class="command">
+        <h2>Nova missão</h2>
+        <label for="instruction">O que a frota deve fazer?</label>
+        <input id="instruction" name="instruction" maxlength="300" autocomplete="off"
+               placeholder="leve o tb1 até a doca de carga" required>
+        <label for="robot">Limitar a um robô</label>
+        <select id="robot" name="robot"><option value="">qualquer robô</option></select>
+        <button type="submit">Enviar missão</button>
+        <p id="command-error" class="error" role="alert"></p>
+      </form>
       <div class="panel" aria-label="Missão">
-        <h2>Missão</h2>
-        <div id="mission" class="mission"><p class="muted">Nenhuma missão selecionada.</p></div>
+        <h2>Missão acompanhada</h2>
+        <div id="mission" class="mission">
+          <p class="quiet">Envie uma missão ou escolha uma no histórico.</p>
+        </div>
       </div>
       <div class="panel" aria-label="Histórico">
         <h2>Histórico</h2>
