@@ -1,0 +1,103 @@
+# Fleet AI + SimFleet na máquina local (ticket 12). Só para uso local ou pelo
+# túnel SSH: a API fica em 127.0.0.1 e o SimFleet nunca é publicado. Este
+# arquivo não autoriza exposição pública (ver README).
+#
+#   docker compose up -d --build     subir
+#   docker compose logs -f fleet-ai  logs
+#   docker compose down              derrubar
+
+name: fleet-ai
+
+services:
+  simfleet:
+    build:
+      context: .
+      target: simfleet
+    image: fleet-ai/simfleet:local
+    environment:
+      # A 0,3 m/s a ida até a doca leva ~60 s, o tempo máximo da missão; 3x deixa a demo fluida.
+      SIMFLEET_TIME_SCALE: "3"
+    networks:
+      - internal
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 20s
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    cpus: 1.0
+    pids_limit: 128
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  fleet-ai:
+    build:
+      context: .
+      target: fleet-ai
+    image: fleet-ai/fleet-ai:local
+    environment:
+      FLEET_AI_FLEET_ADAPTER: sim
+      FLEET_AI_FLEET_URL: http://simfleet:8001
+      FLEET_AI_PLANNER: deterministic
+    ports:
+      - "127.0.0.1:${FLEET_AI_PORT:-8000}:8000"
+    networks:
+      - internal
+      - edge
+    depends_on:
+      simfleet:
+        condition: service_healthy
+    healthcheck:
+      # Liveness, nunca a readiness: o container não reinicia quando o backend cai.
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 20s
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 384m
+    cpus: 1.0
+    pids_limit: 128
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  # Sem saída para a internet; o SimFleet só existe aqui.
+  internal:
+    internal: true
+  # Só para publicar a porta do Fleet AI em 127.0.0.1.
+  edge: {}

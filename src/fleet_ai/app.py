@@ -3,7 +3,8 @@
 import logging
 import os
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -65,6 +66,8 @@ def create_app(
     tempo máximo e prazo de cancelamento não informados vêm das variáveis FLEET_AI_*
     (ou dos padrões da SPEC-001); um valor inválido impede o serviço de subir.
     """
+    # Só o Executor criado aqui é fechado no shutdown; um injetado é de quem o criou.
+    owns_executor = executor is None
     fleet = executor or Executor(fleet_adapter_from_env(os.environ, fleet_transport))
     names = load_names()
     active_planner = planner or planner_from_env(os.environ, names, llm)
@@ -82,7 +85,19 @@ def create_app(
     readiness = Readiness(
         fleet.list_robots, adapter=fleet.adapter_name, clock=clock, timeout=health_probe_timeout
     )
-    app = FastAPI(title="Fleet AI")
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        yield
+        # Shutdown (ticket 12): encerra a sondagem de readiness e o cliente HTTP do
+        # Executor criado aqui. Missões em andamento não são retomadas nem gravadas:
+        # o histórico é em memória, e nenhum robô é cancelado automaticamente aqui
+        # (ADR-0006).
+        await readiness.aclose()
+        if owns_executor:
+            await fleet.aclose()
+
+    app = FastAPI(title="Fleet AI", lifespan=lifespan)
 
     @app.exception_handler(RequestValidationError)
     def invalid_body(_: Request, exc: RequestValidationError) -> JSONResponse:

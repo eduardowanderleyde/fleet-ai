@@ -10,7 +10,7 @@ por regras; não há LLM pago nem agente autônomo consumindo tokens. A integra�
 com modelos reais é uma funcionalidade futura, opcional e desligada por padrão
 ([ADR-0004](docs/adr/0004-planejador-deterministico-e-llm-opcional.md)).
 
-> **Status: em implementação.** SPEC-001 (MVP), tickets 01 a 11 e 13 a 15 concluídos:
+> **Status: em implementação.** SPEC-001 (MVP), tickets 01 a 15 concluídos:
 > `POST /v1/missions` aceita uma instrução como "leve o tb1 até a doca de carga",
 > o planejador determinístico a executa no SimFleet e `GET /v1/missions/{id}`
 > mostra passos e texto final. Toda missão termina (`completed`, `failed`,
@@ -158,6 +158,53 @@ Roteiro manual de aceitação pelo navegador:
    posições como desatualizadas e mantém o histórico.
 6. Subir o SimFleet de novo: a página se recupera sozinha.
 7. Na aba de rede, só há pedidos para `localhost:8000`.
+
+### Docker Compose (local)
+
+Fleet AI e SimFleet sobem juntos, cada um com a sua imagem (dois alvos do
+`Dockerfile`), usuário não-root, sistema de arquivos somente leitura,
+healthchecks, `restart: unless-stopped`, limites de memória, CPU e processos e
+logs com rotação (3 arquivos de 10 MB). O planejador é o determinístico e o
+SimFleet roda com `SIMFLEET_TIME_SCALE=3`; nenhuma chave de API ou LLM é usado.
+
+```bash
+docker compose up -d --build         # subir (espere "healthy" em docker compose ps)
+docker compose ps                    # estado e healthchecks
+docker compose logs -f fleet-ai      # logs (também: simfleet; sem -f para só ler)
+docker compose restart fleet-ai      # reiniciar um serviço
+docker compose stop                  # parar, mantendo os containers
+docker compose down                  # parar e remover containers e redes
+FLEET_AI_PORT=8010 docker compose up -d   # outra porta no host
+```
+
+- **Só local:** a API é publicada em `127.0.0.1:${FLEET_AI_PORT:-8000}`; o
+  SimFleet fica numa rede interna, sem porta no host e sem saída para a
+  internet. Na VPS, o acesso é pelo mesmo túnel SSH da demo:
+  `ssh -p <porta-ssh> -L 8000:127.0.0.1:8000 <usuário>@<ip-da-vps>` e depois
+  `http://localhost:8000/`.
+- **A demo do `scripts/demo.sh` usa a mesma porta 8000:** pare uma antes de subir
+  a outra, ou use `FLEET_AI_PORT`.
+- **Histórico em memória:** reiniciar ou parar o Fleet AI apaga as missões. Uma
+  missão em andamento na parada espera até 10 s e depois é interrompida; o
+  resultado dela não é gravado, e nenhum robô é cancelado automaticamente por
+  isso (ADR-0006).
+- **Liveness, não readiness:** o healthcheck do Fleet AI usa `/health/live`, então
+  o container não reinicia quando o SimFleet cai; o Fleet AI só sobe depois de o
+  SimFleet ficar saudável.
+- **Não é autorização para exposição pública.** O Compose não traz domínio,
+  HTTPS, proxy, autenticação nem limite de taxa na borda; publicar a API fora de
+  `127.0.0.1` continua exigindo esses passos.
+
+`./scripts/compose-smoke.sh` é o roteiro real de verificação. Ele usa um projeto
+exclusivo e a porta 8010 (não interrompe a demo nem outros containers) e confere:
+
+- health e os dois healthchecks;
+- a interface e os arquivos estáticos servidos da imagem;
+- o mapa, a frota e a missão "leve o tb1 até a doca de carga" até `completed`;
+- o bind só em `127.0.0.1`, o SimFleet sem porta e a memória dos containers;
+- um shutdown completo, sem tarefas de health pendentes.
+
+No fim, ou numa falha, remove só os containers e redes do próprio projeto.
 
 ### Backend de frota e health
 

@@ -48,6 +48,19 @@ class Readiness:
             self._inflight.add_done_callback(self._forget)
         return await asyncio.shield(self._inflight)
 
+    async def aclose(self) -> None:
+        """Encerra a sondagem em andamento, se houver, e espera ela terminar (ticket 12).
+
+        Chamado no shutdown da aplicação: nenhuma tarefa fica pendente nem gera o
+        aviso "Task was destroyed but it is pending".
+        """
+        task = self._inflight
+        if task is None:
+            return
+        task.cancel()
+        # Espera o fim da tarefa cancelada sem engolir o cancelamento de quem chamou.
+        await asyncio.wait({task})
+
     def _forget(self, task: "asyncio.Task[bool]") -> None:
         if self._inflight is task:
             self._inflight = None
