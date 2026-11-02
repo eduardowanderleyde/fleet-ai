@@ -19,6 +19,7 @@ from fleet_ai.contract import (
     FleetBackendError,
     FleetMap,
 )
+from fleet_ai.sanitize import MAX_ROBOTS, is_identifier
 
 
 class FleetAdapter(Protocol):
@@ -78,7 +79,12 @@ class _HttpAdapter:
     async def list_robots(self) -> list[str]:
         data = await self._get("/api/list_robots")
         robot_ids = data.get("robot_ids") if isinstance(data, dict) else None
-        if not isinstance(robot_ids, list) or not all(isinstance(r, str) for r in robot_ids):
+        if (
+            not isinstance(robot_ids, list)
+            or len(robot_ids) > MAX_ROBOTS
+            or not all(is_identifier(r) for r in robot_ids)
+        ):
+            # Ids fora do padrão podem levar texto do backend às respostas (ticket 15).
             raise FleetBackendError("GET /api/list_robots: body outside the contract")
         return robot_ids
 

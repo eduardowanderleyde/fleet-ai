@@ -4,11 +4,15 @@ Cada chamada vira um passo da missão. Uma recusa do backend (`CommandRefused`)
 vira um resultado de erro com o `error_code`. Falhas do backend
 (`FleetBackendError`) e o prazo do Executor (`ExecutorTimeout`) também ficam
 registradas no passo, com uma mensagem genérica, e depois propagam (SPEC-001).
+
+É também o ponto único de sanitização (ticket 15): o que o despachante devolve e
+registra já passou por `fleet_ai.sanitize`, e os dois planejadores só veem isso.
+A mensagem bruta de uma recusa vai só para o log.
 """
 
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable
-from dataclasses import asdict
 from typing import Any
 
 from fleet_ai.contract import (
@@ -19,6 +23,9 @@ from fleet_ai.contract import (
     RobotStatus,
 )
 from fleet_ai.executor import Executor
+from fleet_ai.sanitize import refusal, robot_status
+
+log = logging.getLogger("fleet_ai.tools")
 
 
 class Dispatcher:
@@ -60,7 +67,7 @@ class Dispatcher:
         try:
             result, is_error = await self._tools[tool](tool_input), False
         except CommandRefused as refused:
-            result, is_error = {"error_code": refused.error_code, "message": refused.message}, True
+            result, is_error = _refused(tool, refused), True
         except FleetBackendError:
             self._record(tool, tool_input, _BACKEND_UNAVAILABLE, is_error=True)
             raise
@@ -90,7 +97,7 @@ class Dispatcher:
         except TimeoutError:
             outcome = "not_confirmed"
         except CommandRefused as refused:
-            error = {"error_code": refused.error_code, "message": refused.message}
+            error = _refused("cancel_navigation", refused)
             self._record("cancel_navigation", tool_input, error, is_error=True)
             return robot, refused.error_code
         except FleetBackendError:
@@ -138,5 +145,16 @@ _BACKEND_UNAVAILABLE = {"error": "backend_unavailable", "message": "Fleet backen
 _NAVIGATION_TIMEOUT = {"error": "navigation_timeout", "message": "Navigation did not end in time"}
 
 
+def _refused(tool: str, refused: CommandRefused) -> dict[str, str]:
+    log.info(
+        "fleet_refusal tool=%s error_code=%s",
+        tool,
+        refused.error_code,
+        extra={"tool": tool, "error_code": refused.error_code, "detail": refused.message},
+    )
+    return refusal(refused.error_code)
+
+
 def _status_view(status: RobotStatus) -> dict[str, Any]:
-    return asdict(status)
+    # O `robot_id` é o pedido, já validado na entrada; o resto vem do backend.
+    return robot_status(status)

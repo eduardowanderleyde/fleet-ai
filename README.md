@@ -10,7 +10,7 @@ por regras; não há LLM pago nem agente autônomo consumindo tokens. A integra�
 com modelos reais é uma funcionalidade futura, opcional e desligada por padrão
 ([ADR-0004](docs/adr/0004-planejador-deterministico-e-llm-opcional.md)).
 
-> **Status: em implementação.** SPEC-001 (MVP), tickets 01 a 11, 13 e 14 concluídos:
+> **Status: em implementação.** SPEC-001 (MVP), tickets 01 a 11 e 13 a 15 concluídos:
 > `POST /v1/missions` aceita uma instrução como "leve o tb1 até a doca de carga",
 > o planejador determinístico a executa no SimFleet e `GET /v1/missions/{id}`
 > mostra passos e texto final. Toda missão termina (`completed`, `failed`,
@@ -139,8 +139,10 @@ nunca fica exposto a ele.
 
 O script imprime o comando do túnel. No seu computador:
 `ssh -p <porta-ssh> -L 8000:127.0.0.1:8000 <usuário>@<ip-da-vps>` e depois `http://localhost:8000/`.
-**Não exponha a API publicamente** antes do ticket 15 (respostas públicas
-sanitizadas) e de um controle de acesso.
+**Não exponha a API publicamente.** As respostas públicas já são sanitizadas
+(ticket 15: recusas, estado do robô e texto final sem texto bruto do backend, do
+LLM ou de exceções; `404` e `500` com corpos fixos), mas ainda falta um controle
+de acesso e o limite de taxa no proxy reverso.
 
 Roteiro manual de aceitação pelo navegador:
 

@@ -4,7 +4,7 @@
 
 **Blocked by:** 10
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 ## Campos públicos que hoje podem carregar texto do backend
 
@@ -35,13 +35,13 @@ Já controlados e mantidos: textos de falha da missão (`backend_unavailable`, `
 
 ## Critérios
 
-- [ ] Nenhum dos campos da tabela acima carrega texto bruto do backend, de exceção interna ou do LLM sem os limites definidos
-- [ ] A sanitização vale para os dois planejadores e os dois adaptadores, a partir de um único ponto
-- [ ] Informação útil preservada: `error_code`, `nav_state`, pose, resultado do cancelamento, ids dos robôs e textos do Fleet AI
-- [ ] A visão que o modelo recebe (ticket 10) continua igual ou mais restrita
-- [ ] `404` e `500` com corpos fixos, sem eco nem stack trace
-- [ ] O detalhe técnico continua nos logs, para diagnóstico
-- [ ] README e SPEC-001 registram que a exposição pública depende deste ticket
+- [x] Nenhum dos campos da tabela acima carrega texto bruto do backend, de exceção interna ou do LLM sem os limites definidos
+- [x] A sanitização vale para os dois planejadores e os dois adaptadores, a partir de um único ponto
+- [x] Informação útil preservada: `error_code`, `nav_state`, pose, resultado do cancelamento, ids dos robôs e textos do Fleet AI
+- [x] A visão que o modelo recebe (ticket 10) continua igual ou mais restrita
+- [x] `404` e `500` com corpos fixos, sem eco nem stack trace
+- [x] O detalhe técnico continua nos logs, para diagnóstico
+- [x] README e SPEC-001 registram que a exposição pública depende deste ticket
 
 ## Testes previstos
 
@@ -60,3 +60,11 @@ Seam: API HTTP do Fleet AI em processo, com SimFleet e fake do Fleet UI, transpo
 | 404 | `test_unknown_mission_does_not_echo_the_path` |
 | Varredura geral | `test_no_sensitive_text_in_any_public_response` (`POST /v1/missions`, `GET /v1/missions/{id}`, `/health`, `/health/live`: nenhum dos textos sensíveis em nenhum corpo) |
 | Diagnóstico | `test_backend_detail_still_reaches_the_logs` |
+
+## Comments
+
+- 2026-11-02 (implementação): as regras ficam em `fleet_ai/sanitize.py`. O despachante (`fleet_ai/tools.py`) aplica a recusa e o estado do robô a todo passo e a todo resultado devolvido aos planejadores; o planejador LLM perdeu as visões próprias (`_refusal`, `_for_model`) e vê exatamente os passos públicos. O adaptador recusa listas com ids fora do padrão ou com mais de 100 robôs (`FleetBackendError`). As visões da interface web (SPEC-003) usam as mesmas funções.
+- 2026-11-02: além do pedido, os erros do próprio framework (rota ou método inexistente) também têm corpo fixo (`not_found`, `method_not_allowed`), porque o `404` padrão do FastAPI escapava do teste do eco.
+- 2026-11-02: o `robot_id` do estado é sempre o id pedido, já validado na entrada (ids do cenário, escopo com 1 a 32 caracteres, argumento do modelo no padrão), então não há validação extra no estado.
+- 2026-11-02: o texto final do LLM mantém só a quebra de linha; os outros caracteres de controle e de formatação invisível (categorias Unicode Cc e Cf, como a inversão de direção) viram espaço, e o texto é cortado em 2000 caracteres.
+- 2026-11-02, provas de sanidade: 15 garantias desligadas uma de cada vez; todas derrubam pelo menos um teste. O limite de 100 robôs não derrubava nenhum na primeira rodada e ganhou um caso próprio.

@@ -13,6 +13,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from fleet_ai.config import fleet_adapter_from_env, planner_from_env
 from fleet_ai.contract import FleetBackendError
@@ -87,6 +88,29 @@ def create_app(
     def invalid_body(_: Request, exc: RequestValidationError) -> JSONResponse:
         fields = ", ".join(str(error["loc"][-1]) for error in exc.errors())
         return _refusal(422, "invalid_request", f"Invalid request: {fields}")
+
+    @app.exception_handler(StarletteHTTPException)
+    def http_error(_: Request, exc: StarletteHTTPException) -> JSONResponse:
+        # Erros do próprio framework (rota ou método inexistente) com corpo fixo,
+        # sem repetir o caminho pedido (ticket 15).
+        error, message = _HTTP_ERRORS.get(exc.status_code, ("http_error", "Request failed"))
+        return JSONResponse(
+            {"error": error, "message": message},
+            status_code=exc.status_code,
+            headers=getattr(exc, "headers", None),
+        )
+
+    @app.exception_handler(Exception)
+    def unexpected_error(request: Request, exc: Exception) -> JSONResponse:
+        # Corpo fixo, sem stack trace nem texto da exceção; o detalhe fica no log
+        # (ticket 15).
+        log.error(
+            "endpoint_error path=%s error=%s",
+            request.url.path,
+            type(exc).__name__,
+            exc_info=exc,
+        )
+        return _refusal(500, "internal_error", "Internal error")
 
     @app.get("/health", response_model=None)
     async def health() -> JSONResponse:
@@ -214,7 +238,8 @@ def create_app(
     async def get_mission(mission_id: str) -> dict[str, object] | JSONResponse:
         mission = missions.get(mission_id)
         if mission is None:
-            return _refusal(404, "not_found", f"Mission {mission_id} not found")
+            # Mensagem fixa: não repete o caminho pedido (ticket 15).
+            return _refusal(404, "not_found", "Mission not found")
         return mission.as_dict()
 
     return app
@@ -224,6 +249,12 @@ def _fleet_unavailable(exc: FleetBackendError) -> JSONResponse:
     """Texto fixo para a interface; o detalhe vai só para o log, com o tipo do erro."""
     log.warning("fleet_read_failed error_type=%s", type(exc).__name__, extra={"detail": str(exc)})
     return _refusal(503, "fleet_unavailable", "The fleet backend is unavailable.")
+
+
+_HTTP_ERRORS = {
+    404: ("not_found", "Not found"),
+    405: ("method_not_allowed", "Method not allowed"),
+}
 
 
 def _refusal(status_code: int, error: str, message: str) -> JSONResponse:

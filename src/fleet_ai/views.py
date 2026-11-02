@@ -6,7 +6,6 @@ padrão, `last_error` só tem códigos do contrato e uma falha vira texto fixo
 """
 
 import logging
-import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -14,23 +13,12 @@ from typing import Any
 from fleet_ai.contract import FleetBackendError, FleetMap, RobotStatus
 from fleet_ai.executor import Executor
 from fleet_ai.geometry import Frame, canvas_heading, synthetic_frame
+from fleet_ai.sanitize import MAX_ROBOTS, is_identifier, safe_last_error, safe_role
 from fleet_ai.scenario import ScenarioNames
 
 log = logging.getLogger("fleet_ai.views")
 
-# Códigos de `last_error` do contrato (ADR-0005); outro texto vira NAV_ERROR.
-KNOWN_LAST_ERRORS = frozenset({"", "NAV2_REJECTED", "NAV2_ABORTED"})
-IDENTIFIER = re.compile(r"[A-Za-z0-9_-]{1,64}")
-MAX_ROBOTS = 100
 MAP_CACHE_SECONDS = 300.0
-
-
-def safe_last_error(value: str) -> str:
-    return value if value in KNOWN_LAST_ERRORS else "NAV_ERROR"
-
-
-def safe_role(value: str) -> str:
-    return value if IDENTIFIER.fullmatch(value) else "UNKNOWN"
 
 
 @dataclass(frozen=True)
@@ -52,9 +40,7 @@ class FleetViews:
 
     async def robots(self) -> list[RobotStatus]:
         statuses = await self._executor.fleet_status()
-        if len(statuses) > MAX_ROBOTS or not all(
-            IDENTIFIER.fullmatch(s.robot_id) for s in statuses
-        ):
+        if len(statuses) > MAX_ROBOTS or not all(is_identifier(s.robot_id) for s in statuses):
             raise FleetBackendError("GET /api/status: robots outside the contract")
         return statuses
 

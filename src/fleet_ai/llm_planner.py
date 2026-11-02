@@ -13,8 +13,8 @@ from typing import Any
 from fleet_ai.language import Language, detect_language
 from fleet_ai.llm import LlmPort, LlmResponse, TextBlock, ToolUseBlock
 from fleet_ai.planning import PlanOutcome, PlanStatus
+from fleet_ai.sanitize import final_text, is_identifier
 from fleet_ai.tools import Dispatcher
-from fleet_ai.views import safe_last_error, safe_role
 
 DEFAULT_MAX_TURNS = 8
 DEFAULT_MAX_TOOL_CALLS_PER_TURN = 4
@@ -64,17 +64,6 @@ TOOL_SPECS: dict[str, dict[str, Any]] = {
         "description": "Cancela a navegação do robô e verifica o resultado.",
         "input_schema": {"type": "object", "properties": _ROBOT, "required": ["robot_id"]},
     },
-}
-
-
-# Mensagens do Fleet AI para cada recusa: o modelo nunca recebe o texto bruto do
-# backend nem uma exceção interna (SPEC-001).
-_REFUSAL_MESSAGES = {
-    "INVALID_REQUEST": "The fleet rejected the request as invalid.",
-    "UNKNOWN_ROBOT": "The robot is not known to the fleet.",
-    "ROLE_NOT_ALLOWED": "The robot's role does not allow movement.",
-    "ALREADY_NAVIGATING": "The robot is already navigating.",
-    "CANCEL_FAILED": "The fleet could not cancel the navigation.",
 }
 
 
@@ -138,25 +127,6 @@ _TURN_LIMIT: dict[Language, str] = {
 }
 
 
-def _refusal(error_code: str) -> dict[str, str]:
-    message = _REFUSAL_MESSAGES.get(error_code, "The fleet refused the command.")
-    return {
-        "error_code": error_code if error_code in _REFUSAL_MESSAGES else "REFUSED",
-        "message": message,
-    }
-
-
-def _for_model(result: dict[str, Any]) -> dict[str, Any]:
-    """Resultado de sucesso sem texto livre do backend: só campos do contrato."""
-    if "last_error" not in result:
-        return result
-    return {
-        **result,
-        "last_error": safe_last_error(str(result["last_error"])),
-        "role": safe_role(str(result.get("role", ""))),
-    }
-
-
 def _as_message(block: TextBlock | ToolUseBlock) -> dict[str, Any]:
     if isinstance(block, TextBlock):
         return {"type": "text", "text": block.text}
@@ -178,7 +148,8 @@ def _finite_number(value: object) -> bool:
 def _valid_input(tool: str, tool_input: object) -> bool:
     """`input` segue o schema da ferramenta: só os campos dela, com os tipos certos.
 
-    `robot_id` é texto não vazio; coordenadas são números finitos (bool não conta).
+    `robot_id` segue o padrão de identificador (ticket 15); coordenadas são números
+    finitos (bool não conta).
     """
     schema = TOOL_SPECS[tool]["input_schema"]
     if not isinstance(tool_input, dict) or not set(tool_input) <= set(schema["properties"]):
@@ -187,7 +158,7 @@ def _valid_input(tool: str, tool_input: object) -> bool:
         return False
     for key, value in tool_input.items():
         if key == "robot_id":
-            if not (isinstance(value, str) and value):
+            if not is_identifier(value):
                 return False
         elif not _finite_number(value):
             return False
@@ -251,7 +222,8 @@ class LlmPlanner:
                 # Resposta truncada: não dá para confiar nela como resultado.
                 return _ending(dispatcher, "incomplete", _TRUNCATED[language], language)
             if response.stop_reason == "end_turn":
-                return _ending(dispatcher, "completed", text, language)
+                # Texto do modelo: sem controles e limitado (ticket 15).
+                return _ending(dispatcher, "completed", final_text(text), language)
             results = []
             forwarded = 0  # chamadas entregues ao despachante neste turno, inclusive recusas
             for block in response.content:
@@ -270,8 +242,8 @@ class LlmPlanner:
                     results.append(_tool_error(block.id, "TOO_MANY_TOOL_CALLS"))
                     continue
                 forwarded += 1
+                # O despachante já devolve o resultado sanitizado (ticket 15).
                 result, is_error = await dispatcher.call(block.name, block.input)
-                result = _refusal(result["error_code"]) if is_error else _for_model(result)
                 results.append(_tool_result(block.id, result, is_error=is_error))
             messages.append({"role": "user", "content": results})
         text = _TURN_LIMIT[language].format(turns=self._max_turns)
