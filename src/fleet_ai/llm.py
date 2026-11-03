@@ -1,8 +1,9 @@
 """Porta de LLM e o LLM roteirizado (ADR-0003, ADR-0004).
 
-O planejador LLM depende só desta porta, nunca de um SDK. Na SPEC-001 a única
-implementação é o LLM roteirizado: devolve respostas fixas, registra cada pedido
-e falha alto se o roteiro acabar. Não há rede, chave de API nem custo.
+O planejador LLM depende só desta porta, nunca de um SDK. Aqui fica o LLM
+roteirizado, usado nos testes: devolve respostas fixas, registra cada pedido e
+falha alto se o roteiro acabar. O modelo local no formato do OpenAI fica em
+`llm_openai` (ADR-0007). Nenhum dos dois usa chave de API.
 """
 
 import copy

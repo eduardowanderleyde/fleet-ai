@@ -4,14 +4,16 @@ Tudo aqui é validado na inicialização, sem nenhuma chamada de rede: a
 disponibilidade do backend só é verificada pela sondagem de readiness.
 """
 
+import re
 from collections.abc import Mapping
 from urllib.parse import urlsplit
 
 import httpx2
 
 from fleet_ai.adapters import FleetAdapter, FleetUiAdapter, SimAdapter
-from fleet_ai.guards import positive_int
+from fleet_ai.guards import positive_float, positive_int
 from fleet_ai.llm import LlmPort
+from fleet_ai.llm_openai import DEFAULT_TIMEOUT_S, OpenAICompatLlm
 from fleet_ai.llm_planner import (
     DEFAULT_MAX_TOKENS,
     DEFAULT_MAX_TOOL_CALLS_PER_TURN,
@@ -72,21 +74,50 @@ def _url_problem(url: str) -> str | None:
     return None
 
 
+_LLM_ADAPTERS = ("scripted", "openai_compat")
+_MODEL = re.compile(r"[A-Za-z0-9._:/-]{1,128}")
+
+
+def llm_from_env(
+    environ: Mapping[str, str], transport: httpx2.AsyncBaseTransport | None = None
+) -> OpenAICompatLlm | None:
+    """O LLM de FLEET_AI_LLM_ADAPTER: `scripted` (padrão, injetado nos testes) ou
+    `openai_compat` (um modelo local, como o Ollama; ADR-0007).
+
+    Validado na inicialização, sem rede. Nenhuma chave de API é lida: o serviço só
+    fala com modelos que não pedem chave.
+    """
+    adapter = environ.get("FLEET_AI_LLM_ADAPTER", "scripted")
+    if adapter not in _LLM_ADAPTERS:
+        raise ValueError(
+            f"FLEET_AI_LLM_ADAPTER must be one of: {', '.join(_LLM_ADAPTERS)} (got {adapter!r})"
+        )
+    if adapter == "scripted":
+        return None
+    url = environ.get("FLEET_AI_LLM_URL")
+    if url is None:
+        raise ValueError("FLEET_AI_LLM_URL is required when FLEET_AI_LLM_ADAPTER=openai_compat")
+    problem = _url_problem(url)
+    if problem is not None:
+        raise ValueError(f"FLEET_AI_LLM_URL is invalid: {problem}")
+    model = environ.get("FLEET_AI_LLM_MODEL")
+    if model is None:
+        raise ValueError("FLEET_AI_LLM_MODEL is required when FLEET_AI_LLM_ADAPTER=openai_compat")
+    if not _MODEL.fullmatch(model):
+        raise ValueError("FLEET_AI_LLM_MODEL must be a model name like qwen2.5:3b")
+    timeout = positive_float(environ, "FLEET_AI_LLM_TIMEOUT_S", DEFAULT_TIMEOUT_S)
+    return OpenAICompatLlm(url, model, timeout=timeout, transport=transport)
+
+
 def planner_from_env(
     environ: Mapping[str, str], names: ScenarioNames, llm: LlmPort | None
 ) -> Planner:
     """O planejador de FLEET_AI_PLANNER: `deterministic` (padrão) ou `llm`.
 
-    Na SPEC-001 o único adaptador de LLM é o roteirizado, injetado no `create_app`
-    (testes): não há variável de roteiro nem modelo real. Qualquer outra
-    configuração falha de forma explícita na inicialização.
+    O planejador `llm` usa o LLM injetado no `create_app` (o roteirizado, nos
+    testes) ou o de `llm_from_env`. Qualquer outra configuração falha de forma
+    explícita na inicialização.
     """
-    adapter = environ.get("FLEET_AI_LLM_ADAPTER", "scripted")
-    if adapter != "scripted":
-        raise ValueError(
-            f"FLEET_AI_LLM_ADAPTER must be scripted in SPEC-001 (got {adapter!r}); "
-            "real models are not supported"
-        )
     name = environ.get("FLEET_AI_PLANNER", "deterministic")
     if name == "deterministic":
         return DeterministicPlanner(names)
@@ -94,8 +125,8 @@ def planner_from_env(
         raise ValueError(f"FLEET_AI_PLANNER must be one of: deterministic, llm (got {name!r})")
     if llm is None:
         raise ValueError(
-            "FLEET_AI_PLANNER=llm requires a scripted LLM injected in create_app; "
-            "there is no real model in SPEC-001"
+            "FLEET_AI_PLANNER=llm requires FLEET_AI_LLM_ADAPTER=openai_compat "
+            "or a scripted LLM injected in create_app"
         )
     return LlmPlanner(
         llm,
@@ -104,4 +135,5 @@ def planner_from_env(
             environ, "FLEET_AI_LLM_MAX_TOOL_CALLS_PER_TURN", DEFAULT_MAX_TOOL_CALLS_PER_TURN
         ),
         max_tokens=positive_int(environ, "FLEET_AI_LLM_MAX_TOKENS", DEFAULT_MAX_TOKENS),
+        names=names,
     )

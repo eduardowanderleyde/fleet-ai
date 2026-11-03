@@ -1,0 +1,89 @@
+# LLM local e gratuito para o Fleet AI (SPEC-005, ticket 02; ADR-0007). Opcional:
+# sem este arquivo, o Compose sobe com o planejador determinístico.
+#
+#   docker compose -f compose.yaml -f compose.llm.yaml --profile setup run --rm ollama-pull
+#   docker compose -f compose.yaml -f compose.llm.yaml up -d
+#
+# O Ollama fica só na rede interna, sem porta publicada e sem chave de API. Só o
+# serviço de uso único `ollama-pull` sai para a internet, para baixar o modelo.
+
+services:
+  ollama:
+    image: ollama/ollama:0.40.13
+    environment:
+      OLLAMA_HOST: "0.0.0.0:11434"
+      OLLAMA_KEEP_ALIVE: "24h"  # o modelo fica carregado: sem esperar a carga a cada missão
+      OLLAMA_NUM_PARALLEL: "1"  # uma geração por vez na CPU da VPS
+      OLLAMA_MAX_LOADED_MODELS: "1"
+    volumes:
+      - ollama-models:/root/.ollama
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 20s
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 4g
+    cpus: 3.0
+    pids_limit: 256
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Uso único: baixa o modelo para o volume e sai. Só roda com --profile setup.
+  ollama-pull:
+    image: ollama/ollama:0.40.13
+    profiles:
+      - setup
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >-
+        ollama serve >/dev/null 2>&1 &
+        until ollama list >/dev/null 2>&1; do sleep 1; done;
+        ollama pull qwen2.5:3b
+    environment:
+      OLLAMA_HOST: "127.0.0.1:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    networks:
+      - edge
+    restart: "no"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1g
+
+  fleet-ai:
+    environment:
+      FLEET_AI_PLANNER: llm
+      FLEET_AI_LLM_ADAPTER: openai_compat
+      FLEET_AI_LLM_URL: http://ollama:11434/v1
+      FLEET_AI_LLM_MODEL: qwen2.5:3b
+      FLEET_AI_LLM_TIMEOUT_S: "180"
+      # Vários turnos de um modelo na CPU mais a navegação passam de 60 s.
+      FLEET_AI_MISSION_TIMEOUT: "300"
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+volumes:
+  # Nome fixo: o roteiro de avaliação e outros projetos do Compose reaproveitam o
+  # modelo baixado, sem baixar de novo.
+  ollama-models:
+    name: fleet-ai_ollama-models

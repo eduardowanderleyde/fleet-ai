@@ -25,7 +25,7 @@ FLEET_URL = "http://simfleet"
 TERMINAL = {"completed", "not_understood", "incomplete", "failed", "rejected"}
 MOVED_M = 0.05  # deslocamento a partir do qual um robô conta como movido
 AT_PLACE_M = 0.1  # distância máxima até o lugar esperado
-MISSION_DEADLINE_S = 300.0
+MISSION_DEADLINE_S = 600.0  # um modelo local na CPU leva dezenas de segundos por missão
 
 
 @dataclass(frozen=True)
@@ -58,6 +58,7 @@ class CaseResult:
     output_tokens: int = 0
     rejected_tool_calls: int = 0
     error: str | None = None
+    final_text: str = ""
 
 
 def _planner(
@@ -66,7 +67,7 @@ def _planner(
     if contender.llm_for is None:
         return DeterministicPlanner(names), None
     meter = MeteredLlm(contender.llm_for(case))
-    return LlmPlanner(meter), meter
+    return LlmPlanner(meter, names=names), meter
 
 
 async def run_case(case: Case, contender: Contender) -> CaseResult:
@@ -92,7 +93,7 @@ async def _run(case: Case, contender: Contender) -> CaseResult:
     planner, meter = _planner(contender, case, names)
     simfleet = httpx2.ASGITransport(app=create_simfleet(clock=SteppingClock(1.0)))
     executor = Executor(SimAdapter(FLEET_URL, transport=simfleet), poll_interval=0.0)
-    app = create_fleet_ai(executor=executor, planner=planner)
+    app = create_fleet_ai(executor=executor, planner=planner, mission_timeout=MISSION_DEADLINE_S)
     api_transport = httpx2.ASGITransport(app=app, client=("127.0.0.1", 50000))
     async with (
         httpx2.AsyncClient(base_url="http://fleet-ai", transport=api_transport) as api,
@@ -125,6 +126,7 @@ async def _run(case: Case, contender: Contender) -> CaseResult:
         input_tokens=meter.input_tokens if meter else 0,
         output_tokens=meter.output_tokens if meter else 0,
         rejected_tool_calls=(meter.tool_calls - len(tools)) if meter else 0,
+        final_text=mission["final_text"],
     )
 
 
@@ -180,9 +182,19 @@ def _grade(
     return tuple(failures)
 
 
-async def run_suite(cases: list[Case], contender: Contender) -> list[CaseResult]:
+async def run_suite(
+    cases: list[Case],
+    contender: Contender,
+    progress: Callable[[CaseResult], None] | None = None,
+) -> list[CaseResult]:
     """Um caso por vez, cada um com a frota no estado inicial."""
-    return [await run_case(case, contender) for case in cases]
+    results = []
+    for case in cases:
+        result = await run_case(case, contender)
+        if progress is not None:
+            progress(result)
+        results.append(result)
+    return results
 
 
 def _destination(case: Case, names: ScenarioNames) -> tuple[str, tuple[float, float]] | None:

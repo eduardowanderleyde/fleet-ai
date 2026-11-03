@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -45,6 +45,7 @@ class Mission:
     language: str | None = None
     steps: list[dict[str, Any]] = field(default_factory=list)
     final_text: str = ""
+    llm_usage: dict[str, int] | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     finished_at: datetime | None = None
 
@@ -70,6 +71,7 @@ class Mission:
             "language": self.language,
             "steps": self.steps,
             "final_text": self.final_text,
+            "llm_usage": self.llm_usage,
             "created_at": self.created_at.isoformat(),
             "finished_at": self.finished_at.isoformat() if self.finished_at else None,
         }
@@ -128,6 +130,8 @@ def _record_outcome(mission: Mission, outcome: "PlanOutcome") -> None:
     mission.language = outcome.language
     mission.final_text = outcome.final_text
     mission.status = outcome.status
+    if outcome.llm_usage is not None:
+        mission.llm_usage = asdict(outcome.llm_usage)
     mission.finished_at = datetime.now(UTC)
 
 

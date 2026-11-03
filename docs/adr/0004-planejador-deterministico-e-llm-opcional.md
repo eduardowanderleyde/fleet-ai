@@ -2,6 +2,7 @@
 
 **Status:** aceito (2026-10-26)
 **Altera:** ADR-0003 (o adaptador real de LLM sai da SPEC-001)
+**Alterado por:** ADR-0007 (modelo local gratuito atrás de configuração explícita)
 
 ## Contexto
 

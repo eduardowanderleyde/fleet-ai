@@ -2,7 +2,7 @@
 
 **Status:** ready-for-agent
 **Aprovada em:** 2026-11-02
-**Decisões relacionadas:** ADR-0003, ADR-0004 (a ser alterado por um ADR-0007 no ticket 02), ADR-0006
+**Decisões relacionadas:** ADR-0003, ADR-0004 (alterado pelo ADR-0007), ADR-0006
 **Depende de:** SPEC-001 concluída (tickets 01 a 15); Compose local (ticket 12)
 
 ## Problem Statement

@@ -300,6 +300,9 @@ async function refreshHealth() {
     healthRow(list, "Frota", ok ? "conectada" : "indisponível", ok ? "ok" : "bad");
     healthRow(list, "Backend", ADAPTER_TEXT[ready.fleet_adapter] || ready.fleet_adapter);
     healthRow(list, "Planejador", PLANNER_TEXT[ready.planner] || ready.planner);
+    if (ready.llm_enabled && typeof ready.llm_model === "string") {
+      healthRow(list, "Modelo", ready.llm_model);
+    }
   } else {
     healthRow(list, "Frota", "desconhecida", "warn");
   }

@@ -12,8 +12,9 @@ from typing import Any
 
 from fleet_ai.language import Language, detect_language
 from fleet_ai.llm import LlmPort, LlmResponse, TextBlock, ToolUseBlock
-from fleet_ai.planning import PlanOutcome, PlanStatus
+from fleet_ai.planning import LlmUsage, PlanOutcome, PlanStatus
 from fleet_ai.sanitize import final_text, is_identifier
+from fleet_ai.scenario import ScenarioNames
 from fleet_ai.tools import Dispatcher
 
 DEFAULT_MAX_TURNS = 8
@@ -67,6 +68,20 @@ TOOL_SPECS: dict[str, dict[str, Any]] = {
 }
 
 
+def _scenario_text(names: ScenarioNames) -> str:
+    """Robôs e lugares nomeados do cenário: o modelo só move robôs por coordenada."""
+    robots = "; ".join(
+        f"{robot.robot_id} ({', '.join(robot.aliases)})" if robot.aliases else robot.robot_id
+        for robot in names.robots
+    )
+    places = "; ".join(f"{place.name} (x {place.x}, y {place.y})" for place in names.places)
+    return (
+        f" Robôs do cenário, com apelidos: {robots}."
+        f" Lugares nomeados, em metros: {places}."
+        " Para levar um robô a um lugar, use as coordenadas dele em move_robot."
+    )
+
+
 class InvalidLlmResponse(Exception):
     """Resposta fora do contrato da porta de LLM: a missão termina `failed`."""
 
@@ -91,7 +106,11 @@ def _check_response(response: LlmResponse) -> None:
 
 
 def _ending(
-    dispatcher: Dispatcher, status: PlanStatus, text: str, language: Language
+    dispatcher: Dispatcher,
+    status: PlanStatus,
+    text: str,
+    language: Language,
+    usage: LlmUsage | None = None,
 ) -> PlanOutcome:
     """Com navegação desta missão ainda ativa, nunca `completed` (SPEC-001).
 
@@ -100,9 +119,9 @@ def _ending(
     """
     robot = dispatcher.navigating
     if robot is None:
-        return PlanOutcome(status, language, text)
+        return PlanOutcome(status, language, text, usage)
     warning = _STILL_NAVIGATING[language].format(robot=robot)
-    return PlanOutcome("incomplete", language, f"{warning} {text}".strip())
+    return PlanOutcome("incomplete", language, f"{warning} {text}".strip(), usage)
 
 
 _STILL_NAVIGATING: dict[Language, str] = {
@@ -189,8 +208,10 @@ class LlmPlanner:
         max_turns: int = DEFAULT_MAX_TURNS,
         max_tool_calls_per_turn: int = DEFAULT_MAX_TOOL_CALLS_PER_TURN,
         max_tokens: int = DEFAULT_MAX_TOKENS,
+        names: ScenarioNames | None = None,
     ) -> None:
         self._llm = llm
+        self._scenario = _scenario_text(names) if names is not None else ""
         self._max_turns = max_turns
         self._max_tool_calls_per_turn = max_tool_calls_per_turn
         self._max_tokens = max_tokens
@@ -201,11 +222,12 @@ class LlmPlanner:
         language = detect_language(instruction)
         # Exatamente as ferramentas do despachante, e nenhuma outra (SPEC-001).
         tools = [{"name": name, **TOOL_SPECS[name]} for name in dispatcher.tool_names]
-        system = SYSTEM_PROMPT
+        system = SYSTEM_PROMPT + self._scenario
         if robot_id is not None:
             # Informativo: quem garante o escopo é o despachante.
             system += f" Você está restrito ao robô '{robot_id}' — não pode operar nenhum outro."
         messages: list[dict[str, Any]] = [{"role": "user", "content": instruction}]
+        turns = input_tokens = output_tokens = 0
         for _ in range(self._max_turns):
             response = await self._llm.complete(
                 system=system,
@@ -213,6 +235,10 @@ class LlmPlanner:
                 tools=tools,
                 max_tokens=self._max_tokens,
             )
+            turns += 1
+            input_tokens += response.usage.input_tokens
+            output_tokens += response.usage.output_tokens
+            usage = LlmUsage(turns, input_tokens, output_tokens)
             _check_response(response)
             messages.append(
                 {"role": "assistant", "content": [_as_message(b) for b in response.content]}
@@ -220,10 +246,10 @@ class LlmPlanner:
             text = "".join(b.text for b in response.content if isinstance(b, TextBlock))
             if response.stop_reason == "max_tokens":
                 # Resposta truncada: não dá para confiar nela como resultado.
-                return _ending(dispatcher, "incomplete", _TRUNCATED[language], language)
+                return _ending(dispatcher, "incomplete", _TRUNCATED[language], language, usage)
             if response.stop_reason == "end_turn":
                 # Texto do modelo: sem controles e limitado (ticket 15).
-                return _ending(dispatcher, "completed", final_text(text), language)
+                return _ending(dispatcher, "completed", final_text(text), language, usage)
             results = []
             forwarded = 0  # chamadas entregues ao despachante neste turno, inclusive recusas
             for block in response.content:
@@ -247,4 +273,6 @@ class LlmPlanner:
                 results.append(_tool_result(block.id, result, is_error=is_error))
             messages.append({"role": "user", "content": results})
         text = _TURN_LIMIT[language].format(turns=self._max_turns)
-        return _ending(dispatcher, "incomplete", text, language)
+        return _ending(
+            dispatcher, "incomplete", text, language, LlmUsage(turns, input_tokens, output_tokens)
+        )

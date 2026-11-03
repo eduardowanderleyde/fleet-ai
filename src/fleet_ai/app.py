@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from fleet_ai.config import fleet_adapter_from_env, planner_from_env
+from fleet_ai.config import fleet_adapter_from_env, llm_from_env, planner_from_env
 from fleet_ai.contract import FleetBackendError
 from fleet_ai.executor import Executor
 from fleet_ai.guards import (
@@ -70,7 +70,14 @@ def create_app(
     owns_executor = executor is None
     fleet = executor or Executor(fleet_adapter_from_env(os.environ, fleet_transport))
     names = load_names()
-    active_planner = planner or planner_from_env(os.environ, names, llm)
+    # O LLM da configuração é sempre validado; um LLM injetado (testes) tem prioridade.
+    configured_llm = llm_from_env(os.environ)
+    active_planner = planner or planner_from_env(os.environ, names, llm or configured_llm)
+    llm_model = (
+        configured_llm.model
+        if configured_llm is not None and llm is None and active_planner.name == "llm"
+        else None
+    )
     scope_guard = ScopeGuard(names)
     guard_limits = limits or Limits.from_env(os.environ)
     mission_timeout = mission_timeout or positive_float(
@@ -96,6 +103,8 @@ def create_app(
         await readiness.aclose()
         if owns_executor:
             await fleet.aclose()
+        if configured_llm is not None:
+            await configured_llm.aclose()
 
     app = FastAPI(title="Fleet AI", lifespan=lifespan)
 
@@ -136,7 +145,9 @@ def create_app(
             "fleet_adapter": fleet.adapter_name,
             "fleet_backend_reachable": reachable,
             "planner": active_planner.name,
-            "llm_enabled": False,
+            # Só o nome do modelo, nunca a URL (ticket 11 e SPEC-005).
+            "llm_enabled": llm_model is not None,
+            "llm_model": llm_model,
         }
         return JSONResponse(body, status_code=200 if reachable else 503)
 

@@ -35,10 +35,20 @@ class Destination:
 
 
 @dataclass(frozen=True)
+class LlmUsage:
+    """Turnos e tokens que um planejador LLM gastou numa missão."""
+
+    turns: int
+    input_tokens: int
+    output_tokens: int
+
+
+@dataclass(frozen=True)
 class PlanOutcome:
     status: PlanStatus
     language: Language
     final_text: str
+    llm_usage: LlmUsage | None = None
 
 
 class Planner(Protocol):

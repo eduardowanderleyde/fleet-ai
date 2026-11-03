@@ -82,6 +82,7 @@ async def test_default_adapter_is_sim_and_ready_when_the_backend_answers() -> No
         "fleet_backend_reachable": True,
         "planner": "deterministic",
         "llm_enabled": False,
+        "llm_model": None,
     }
     assert backend.urls == ["http://localhost:8001/api/list_robots"]
 
@@ -223,6 +224,7 @@ async def test_readiness_is_degraded_without_exposing_backend_details(failure: s
         "fleet_backend_reachable": False,
         "planner": "deterministic",
         "llm_enabled": False,
+        "llm_model": None,
     }
     for secret in ("fleet.internal", "8001", "localhost", "refused", "Traceback", "secret"):
         assert secret not in response.text

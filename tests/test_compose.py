@@ -138,3 +138,43 @@ def test_smoke_script_is_isolated_from_the_running_demo() -> None:
         "kill $(docker",
     ):
         assert forbidden not in script, forbidden
+
+
+COMPOSE_LLM = ROOT / "compose.llm.yaml"
+
+
+def llm_services() -> dict[str, str]:
+    return blocks(blocks(COMPOSE_LLM.read_text(), 0)["services"], 2)
+
+
+def test_ollama_is_internal_unpublished_and_pinned() -> None:
+    text = COMPOSE_LLM.read_text()
+    ollama = blocks(llm_services()["ollama"], 4)
+    pull = blocks(llm_services()["ollama-pull"], 4)
+
+    assert "ports" not in ollama and "expose" not in ollama
+    assert re.findall(r"-\s+(\S+)", ollama["networks"]) == ["internal"]
+    images = re.findall(r"image:\s*(\S+)", text)
+    assert images == ["ollama/ollama:0.40.13"] * 2  # versão fixa, nunca latest
+    assert re.search(r"mem_limit:\s*4g", llm_services()["ollama"])
+    assert re.search(r"restart:\s*unless-stopped", llm_services()["ollama"])
+    assert re.search(r"-\s+ALL", ollama["cap_drop"])
+    assert "no-new-privileges:true" in llm_services()["ollama"]
+    # Só o download sai para a internet, e só quando pedido (perfil setup).
+    assert re.findall(r"-\s+(\S+)", pull["profiles"]) == ["setup"]
+    assert re.findall(r"-\s+(\S+)", pull["networks"]) == ["edge"]
+    assert "ports" not in pull
+
+
+def test_llm_override_needs_no_key_and_keeps_the_default_deterministic() -> None:
+    text = COMPOSE_LLM.read_text()
+    fleet_ai = blocks(llm_services()["fleet-ai"], 4)["environment"]
+
+    assert re.search(r"FLEET_AI_PLANNER:\s*llm\s*$", fleet_ai, re.M)
+    assert re.search(r"FLEET_AI_LLM_ADAPTER:\s*openai_compat\s*$", fleet_ai, re.M)
+    assert re.search(r"FLEET_AI_LLM_URL:\s*http://ollama:11434/v1\s*$", fleet_ai, re.M)
+    assert re.search(r"FLEET_AI_LLM_MODEL:\s*qwen2\.5:3b\s*$", fleet_ai, re.M)
+    assert not re.search(r"_KEY\b|\bKEY\b|TOKEN|SECRET|PASSWORD|ANTHROPIC|OPENAI_API", text, re.I)
+    assert "env_file" not in text and "0.0.0.0:" not in text.replace('"0.0.0.0:11434"', "")
+    # O compose.yaml sozinho continua com o planejador determinístico.
+    assert "FLEET_AI_LLM" not in COMPOSE.read_text()
