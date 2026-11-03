@@ -43,6 +43,13 @@ Uma instrução que cita um robô diferente do robô do escopo da missão; a mis
 Um modelo de linguagem de mentira, que devolve respostas fixas, usado para testar o planejador LLM sem rede nem custo.
 _Avoid_: mock do Claude
 
+**Caso de avaliação**:
+Uma instrução, com escopo opcional, e o resultado que o planejador deveria produzir, conferido por regras sobre a missão e a frota.
+_Avoid_: teste (sem qualificação), prompt de teste
+
+**Linha de base**:
+O resultado registrado de um planejador na suíte de avaliação; uma mudança não pode fazer errar um caso que a linha de base acerta.
+
 ## Frota
 
 **Robô**:

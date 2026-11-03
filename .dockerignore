@@ -15,3 +15,5 @@ scripts
 compose.yaml
 Dockerfile
 *.log
+evals
+runs

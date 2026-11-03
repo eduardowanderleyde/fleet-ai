@@ -1,0 +1,18 @@
+# Linha de base da suíte de avaliação (SPEC-005, ticket 01). O teste de regressão
+# falha se algum caso fora desta lista falhar. Ao melhorar um planejador, tire daqui
+# os casos que passaram a acertar.
+
+[deterministic]
+date = "2026-11-02"
+cases = 51
+passed = 44
+known_failures = [
+    "variacao-coloquial",
+    "variacao-vocativo",
+    "variacao-manda-pro",
+    "variacao-pergunta",
+    "variacao-necessidade",
+    "variacao-erro-de-digitacao",
+    # Bug encontrado pela suíte: com dois robôs na instrução, move só o primeiro.
+    "ambigua-dois-robos",
+]

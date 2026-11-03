@@ -46,4 +46,4 @@ select = ["E", "F", "I", "B", "UP", "S", "SIM"]
 python_version = "3.12"
 strict = true
 mypy_path = "src"
-packages = ["fleet_ai", "simfleet", "tests"]
+packages = ["fleet_ai", "fleet_eval", "simfleet", "tests"]
