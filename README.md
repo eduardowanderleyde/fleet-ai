@@ -5,6 +5,24 @@ natural. Você escreve "leve o tb1 até a doca de carga" (ou "move tb1 to the
 loading dock") e o Fleet AI transforma a instrução em chamadas HTTP de alto
 nível a um backend de frota, nunca em comandos ROS 2 diretos.
 
+<p>
+  <img src="https://img.shields.io/badge/ROS_2-22314E?style=flat-square&logo=ros&logoColor=white" />
+  <img src="https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white" />
+  <img src="https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white" />
+  <img src="https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white" />
+  <img src="https://img.shields.io/badge/sem_chave_de_API-custo_zero-2ea44f?style=flat-square" />
+</p>
+
+```bash
+# Uma frase vira uma missão para a frota (português ou inglês)
+curl -X POST http://localhost:8000/v1/missions \
+  -H "Content-Type: application/json" \
+  -d '{"instruction": "leve o tb1 até a doca de carga"}'
+# → 202 {"mission_id": "...", "status": "..."}
+
+curl http://localhost:8000/v1/missions/<mission_id>   # passos executados e texto final
+```
+
 **Funciona sem nenhuma chave de API.** O planejador padrão é determinístico,
 por regras; não há LLM pago nem agente autônomo consumindo tokens. A integração
 com modelos reais é uma funcionalidade futura, opcional e desligada por padrão
